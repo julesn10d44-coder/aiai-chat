@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIAI - Assistant Interactif</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 1200px;
+            height: 90vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .admin-section {
+            width: 400px;
+            background: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            border-left: 2px solid #e0e0e0;
+        }
+
+        .admin-section.hidden {
+            display: none;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-user {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .message-ai {
+            display: flex;
+            justify-content: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .message-user .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+
+        .message-ai .message-bubble {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+        }
+
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"], input[type="password"] {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus, input[type="password"]:focus {
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .admin-header {
+            padding: 20px;
+            background: #667eea;
+            color: white;
+        }
+
+        .admin-header h2 {
+            font-size: 20px;
+        }
+
+        .pending-questions {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .pending-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .pending-question {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .pending-time {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 10px;
+        }
+
+        .response-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-respond {
+            flex: 1;
+            padding: 8px;
+            font-size: 12px;
+            background: #28a745;
+        }
+
+        .btn-respond:hover {
+            background: #218838;
+        }
+
+        .btn-auto {
+            flex: 1;
+            padding: 8px;
+            font-size: 12px;
+            background: #17a2b8;
+        }
+
+        .btn-auto:hover {
+            background: #138496;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+
+        .status {
+            padding: 10px;
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            margin: 15px;
+            border-radius: 5px;
+            font-size: 13px;
+        }
+
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .login-box h2 {
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+
+        .login-box input {
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        .admin-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            z-index: 100;
+        }
+
+        .admin-toggle:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div id="loginOverlay" class="login-overlay" style="display: none;">
+        <div class="login-box">
+            <h2>🔒 Accès Admin</h2>
+            <input type="password" id="adminPassword" placeholder="Mot de passe admin" />
+            <button onclick="checkAdminPassword()">Connexion</button>
+        </div>
+    </div>
+
+    <button class="admin-toggle" onclick="toggleAdminPanel()">👤 Admin</button>
+
+    <div class="container">
+        <!-- Section Chat Public -->
+        <div class="chat-section">
+            <div class="header">
+                <h1>🤖 AIAI</h1>
+                <p>Votre assistant intelligent interactif</p>
+            </div>
+            <div class="messages" id="chatMessages"></div>
+            <div class="input-area">
+                <div class="input-container">
+                    <input type="text" id="userInput" placeholder="Posez votre question à AIAI..." />
+                    <button onclick="sendMessage()">Envoyer</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section Admin (cachée par défaut) -->
+        <div class="admin-section hidden" id="adminSection">
+            <div class="admin-header">
+                <h2>📋 Panneau Admin</h2>
+            </div>
+            <div class="status">
+                <strong>Questions en attente:</strong> <span id="pendingCount">0</span>
+            </div>
+            <div class="pending-questions" id="pendingQuestions">
+                <div class="empty-state">
+                    Aucune question en attente
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ADMIN_PASSWORD = "admin123"; // Changez ce mot de passe !
+        let isAdminLoggedIn = false;
+        let messages = [];
+        let pendingQuestions = [];
+
+        // Charger les données au démarrage
+        async function init() {
+            await loadFromStorage();
+            loadMessages();
+            loadPendingQuestions();
+        }
+
+        async function loadFromStorage() {
+            try {
+                const messagesData = await window.storage.get('aiai-messages');
+                if (messagesData) {
+                    messages = JSON.parse(messagesData.value);
+                } else {
+                    // Message de bienvenue
+                    messages = [{
+                        type: 'ai',
+                        text: 'Bonjour ! Je suis AIAI, votre assistant intelligent. Comment puis-je vous aider aujourd\'hui ?',
+                        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+                    }];
+                }
+
+                const pendingData = await window.storage.get('aiai-pending');
+                if (pendingData) {
+                    pendingQuestions = JSON.parse(pendingData.value);
+                }
+            } catch (error) {
+                console.log('Première utilisation, données initialisées');
+            }
+        }
+
+        async function saveToStorage() {
+            try {
+                await window.storage.set('aiai-messages', JSON.stringify(messages));
+                await window.storage.set('aiai-pending', JSON.stringify(pendingQuestions));
+            } catch (error) {
+                console.error('Erreur de sauvegarde:', error);
+            }
+        }
+
+        function loadMessages() {
+            const chatDiv = document.getElementById('chatMessages');
+            chatDiv.innerHTML = messages.map(msg => `
+                <div class="message message-${msg.type}">
+                    <div class="message-bubble">
+                        ${msg.text}
+                        <div class="message-time">${msg.time}</div>
+                    </div>
+                </div>
+            `).join('');
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        function loadPendingQuestions() {
+            const pendingDiv = document.getElementById('pendingQuestions');
+            const countSpan = document.getElementById('pendingCount');
+            
+            countSpan.textContent = pendingQuestions.length;
+
+            if (pendingQuestions.length === 0) {
+                pendingDiv.innerHTML = '<div class="empty-state">Aucune question en attente</div>';
+                return;
+            }
+
+            pendingDiv.innerHTML = pendingQuestions.map((q, index) => `
+                <div class="pending-item">
+                    <div class="pending-question">${q.text}</div>
+                    <div class="pending-time">${q.time}</div>
+                    <input type="text" class="response-input" id="response-${index}" placeholder="Votre réponse..." />
+                    <div class="action-buttons">
+                        <button class="btn-respond" onclick="respondManually(${index})">Répondre</button>
+                        <button class="btn-auto" onclick="autoRespond(${index})">Auto-réponse</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const text = input.value.trim();
+            
+            if (!text) return;
+
+            const now = new Date();
+            const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+            // Ajouter le message de l'utilisateur
+            messages.push({
+                type: 'user',
+                text: text,
+                time: time
+            });
+
+            // Ajouter à la file d'attente admin
+            pendingQuestions.push({
+                text: text,
+                time: time,
+                timestamp: now.getTime()
+            });
+
+            input.value = '';
+            await saveToStorage();
+            loadMessages();
+            loadPendingQuestions();
+        }
+
+        async function respondManually(index) {
+            const responseInput = document.getElementById(`response-${index}`);
+            const responseText = responseInput.value.trim();
+
+            if (!responseText) {
+                alert('Veuillez entrer une réponse');
+                return;
+            }
+
+            const now = new Date();
+            const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+            messages.push({
+                type: 'ai',
+                text: responseText,
+                time: time
+            });
+
+            pendingQuestions.splice(index, 1);
+            await saveToStorage();
+            loadMessages();
+            loadPendingQuestions();
+        }
+
+        function generateSmartResponse(question) {
+            const q = question.toLowerCase();
+            
+            // Salutations
+            if (q.match(/bonjour|salut|hello|coucou|hey/)) {
+                const greetings = [
+                    "Bonjour ! Comment puis-je vous aider aujourd'hui ?",
+                    "Salut ! Ravi de vous voir ! En quoi puis-je vous être utile ?",
+                    "Hello ! Je suis là pour vous aider. Que puis-je faire pour vous ?"
+                ];
+                return greetings[Math.floor(Math.random() * greetings.length)];
+            }
+            
+            // Comment vas-tu
+            if (q.match(/comment (vas|va|allez|ça va)/)) {
+                const wellnessResponses = [
+                    "Je vais très bien, merci ! Prêt à vous aider. Et vous ?",
+                    "Parfaitement bien ! Je suis en pleine forme pour répondre à vos questions.",
+                    "Ça va super ! Merci de demander. Comment puis-je vous aider aujourd'hui ?"
+                ];
+                return wellnessResponses[Math.floor(Math.random() * wellnessResponses.length)];
+            }
+            
+            // Qui es-tu / Ton nom
+            if (q.match(/qui (es|est)|ton nom|tu t'appelles|c'est quoi|what is/)) {
+                return "Je m'appelle AIAI, je suis un assistant intelligent conçu pour répondre à vos questions et vous aider au quotidien !";
+            }
+            
+            // Qu'est-ce que tu peux faire
+            if (q.match(/que (peux|peut)|qu'est-ce|capacités|fonctions/)) {
+                return "Je peux répondre à vos questions, discuter avec vous, vous donner des informations et vous assister dans diverses tâches. N'hésitez pas à me poser vos questions !";
+            }
+            
+            // Merci
+            if (q.match(/merci|thank/)) {
+                const thanksResponses = [
+                    "De rien ! C'est un plaisir de vous aider !",
+                    "Avec plaisir ! N'hésitez pas si vous avez d'autres questions.",
+                    "Je vous en prie ! Ravi d'avoir pu vous aider."
+                ];
+                return thanksResponses[Math.floor(Math.random() * thanksResponses.length)];
+            }
+            
+            // Au revoir
+            if (q.match(/au revoir|bye|à bientôt|salut|ciao/)) {
+                return "Au revoir ! À bientôt ! N'hésitez pas à revenir si vous avez d'autres questions.";
+            }
+            
+            // Blagues
+            if (q.match(/blague|joke|rigol|marrant/)) {
+                return "Pourquoi les plongeurs plongent-ils toujours en arrière ? Parce que sinon ils tombent dans le bateau ! 😄";
+            }
+            
+            // Par défaut - réponse intelligente générique
+            return `Excellente question ! Concernant "${question}", je dirais que c'est un sujet intéressant qui mérite réflexion. Pouvez-vous préciser votre demande pour que je puisse vous donner une réponse plus détaillée ?`;
+        }
+
+        async function autoRespond(index) {
+            const question = pendingQuestions[index].text;
+            const autoResponse = generateSmartResponse(question);
+            
+            const now = new Date();
+            const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+            messages.push({
+                type: 'ai',
+                text: autoResponse,
+                time: time
+            });
+
+            pendingQuestions.splice(index, 1);
+            await saveToStorage();
+            loadMessages();
+            loadPendingQuestions();
+        }
+
+        function toggleAdminPanel() {
+            if (!isAdminLoggedIn) {
+                document.getElementById('loginOverlay').style.display = 'flex';
+            } else {
+                const adminSection = document.getElementById('adminSection');
+                adminSection.classList.toggle('hidden');
+            }
+        }
+
+        function checkAdminPassword() {
+            const password = document.getElementById('adminPassword').value;
+            if (password === ADMIN_PASSWORD) {
+                isAdminLoggedIn = true;
+                document.getElementById('loginOverlay').style.display = 'none';
+                document.getElementById('adminSection').classList.remove('hidden');
+                document.getElementById('adminPassword').value = '';
+            } else {
+                alert('Mot de passe incorrect !');
+            }
+        }
+
+        // Permettre l'envoi avec la touche Entrée
+        document.getElementById('userInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        document.getElementById('adminPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                checkAdminPassword();
+            }
+        });
+
+        // Initialisation
+        init();
+    </script>
+</body>
+</html>
