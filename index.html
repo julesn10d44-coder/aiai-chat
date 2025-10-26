@@ -1147,13 +1147,12 @@
                     });
                 }
                 if (currentAdminTab === 'users') {
-                    displayUsersList();
+                    window.displayUsersList();
                 }
             });
 
             onValue(allUsersRef, (snapshot) => {
                 allUsers = {};
-                const promises = [];
                 
                 snapshot.forEach((childSnapshot) => {
                     const uid = childSnapshot.key;
@@ -1169,7 +1168,7 @@
                 });
                 
                 if (currentAdminTab === 'users') {
-                    displayUsersList();
+                    window.displayUsersList();
                 }
             });
         }
@@ -1207,7 +1206,7 @@
             `).join('');
         }
 
-        function displayUsersList() {
+        window.displayUsersList = function() {
             const usersDiv = document.getElementById('usersList');
             const userDetailDiv = document.getElementById('userDetail');
             
@@ -1272,7 +1271,7 @@
                 <div class="user-messages">
                     <div class="user-name">👤 ${user.pseudo}</div>
                     <div class="user-stats">Total: ${conversationsArray.length} conversation(s)</div>
-                    <button class="delete-user-btn" onclick="window.hideUserFromAdmin('${uid}', '${user.pseudo}')">👁️‍🗨️ Masquer cet utilisateur complètement</button>
+                    <button class="delete-user-btn" onclick="window.hideUserFromAdmin('${uid}', '${user.pseudo}')">👁️‍🗨️ Masquer cet utilisateur</button>
                     <hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">
             `;
 
@@ -1308,7 +1307,7 @@
             userDetailDiv.innerHTML = html;
         }
 
-        window.deleteUserConversations = async function(uid, pseudo) {
+        window.hideUserFromAdmin = async function(uid, pseudo) {
             if (!confirm(`Masquer ${pseudo} de la liste admin ? (Ses conversations restent intactes pour lui)`)) return;
 
             const hideUserRef = ref(database, 'admin/hiddenUsers/' + uid);
@@ -1317,8 +1316,18 @@
                 hiddenAt: Date.now()
             });
 
-            alert(`${pseudo} a été masqué de votre liste admin`);
-            displayUsersList();
+            alert(`${pseudo} a été masqué`);
+            window.displayUsersList();
+        }
+
+        window.deleteSpecificConversation = async function(uid, convId, pseudo) {
+            if (!confirm(`Supprimer cette conversation de ${pseudo} ?`)) return;
+
+            const convRef = ref(database, 'users/' + uid + '/conversations/' + convId);
+            await remove(convRef);
+
+            alert('Conversation supprimée !');
+            window.showUserDetail(uid);
         }
 
         window.switchAdminTab = function(tab) {
@@ -1333,7 +1342,7 @@
             } else if (tab === 'users') {
                 document.querySelector('.admin-tab:nth-child(2)').classList.add('active');
                 document.getElementById('usersTab').classList.add('active');
-                displayUsersList();
+                window.displayUsersList();
             }
         }
 
@@ -1415,7 +1424,6 @@
 
         async function callGroqAI(question) {
             try {
-                console.log('Appel IA pour:', question);
                 const response = await fetch(GROQ_API_URL, {
                     method: 'POST',
                     headers: {
@@ -1440,21 +1448,18 @@
                 });
 
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Erreur API:', response.status, errorText);
                     throw new Error(`Erreur ${response.status}`);
                 }
 
                 const data = await response.json();
-                console.log('Réponse IA:', data);
                 
                 if (data.choices && data.choices[0] && data.choices[0].message) {
                     return data.choices[0].message.content;
                 }
-                throw new Error('Format de réponse invalide');
+                throw new Error('Format invalide');
             } catch (error) {
-                console.error('Erreur complète:', error);
-                return "Désolé, je rencontre un problème technique. Essayez de reformuler votre question.";
+                console.error('Erreur IA:', error);
+                return "Désolé, problème technique. Réessayez.";
             }
         }
 
