@@ -913,5 +913,35 @@
 
         window.toggleAdminPanel = function() {
             if (!isAdminLoggedIn) {
-                document.getElementById('loginOverlay').style.display = '
-</html>
+                document.getElementById('loginOverlay').style.display = 'flex';
+            } else {
+                document.getElementById('adminSection').classList.toggle('hidden');
+            }
+        }
+
+        window.checkAdminPassword = function() {
+            const password = document.getElementById('adminPassword').value;
+            if (password === ADMIN_PASSWORD) {
+                isAdminLoggedIn = true;
+                document.getElementById('loginOverlay').style.display = 'none';
+                document.getElementById('adminSection').classList.remove('hidden');
+                document.getElementById('adminPassword').value = '';
+            } else {
+                alert('Mot de passe incorrect !');
+            }
+        }
+
+        document.getElementById('userInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                window.sendMessage();
+            }
+        });
+
+        document.getElementById('adminPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                window.checkAdminPassword();
+            }
+        });
+    </script>
+</body>
+
