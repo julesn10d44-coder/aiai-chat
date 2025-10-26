@@ -630,7 +630,7 @@
                         'Authorization': `Bearer ${GROQ_API_KEY}`
                     },
                     body: JSON.stringify({
-                        model: "llama-3.1-70b-versatile",
+                        model: "llama-3.3-70b-versatile",
                         messages: [
                             {
                                 role: "system",
@@ -852,11 +852,11 @@
                         'Authorization': `Bearer ${GROQ_API_KEY}`
                     },
                     body: JSON.stringify({
-                        model: "llama-3.1-70b-versatile",
+                        model: "llama-3.3-70b-versatile",
                         messages: [
                             {
                                 role: "system",
-                                content: "Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle et conversationnelle."
+                                content: "Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle et conversationnelle. Tu donnes des réponses précises, détaillées et utiles."
                             },
                             {
                                 role: "user",
@@ -864,7 +864,7 @@
                             }
                         ],
                         temperature: 0.7,
-                        max_tokens: 500
+                        max_tokens: 800
                     })
                 });
 
