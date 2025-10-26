@@ -39,7 +39,7 @@
         }
 
         .admin-section {
-            width: 400px;
+            width: 450px;
             background: #f8f9fa;
             display: flex;
             flex-direction: column;
@@ -135,7 +135,7 @@
             gap: 10px;
         }
 
-        input[type="text"], input[type="password"] {
+        input[type="text"], input[type="password"], textarea {
             flex: 1;
             padding: 12px 16px;
             border: 2px solid #e0e0e0;
@@ -143,9 +143,16 @@
             font-size: 14px;
             outline: none;
             transition: border-color 0.3s;
+            font-family: inherit;
         }
 
-        input[type="text"]:focus, input[type="password"]:focus {
+        textarea {
+            border-radius: 15px;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
             border-color: #667eea;
         }
 
@@ -164,6 +171,12 @@
             background: #5568d3;
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
         }
 
         .admin-header {
@@ -193,6 +206,12 @@
         .pending-question {
             font-weight: bold;
             color: #333;
+            margin-bottom: 5px;
+        }
+
+        .user-id {
+            font-size: 11px;
+            color: #999;
             margin-bottom: 10px;
         }
 
@@ -232,10 +251,21 @@
             padding: 8px;
             font-size: 12px;
             background: #17a2b8;
+            position: relative;
         }
 
         .btn-auto:hover {
             background: #138496;
+        }
+
+        .btn-auto.loading {
+            background: #ffc107;
+            pointer-events: none;
+        }
+
+        .btn-auto.loading::after {
+            content: "⏳";
+            margin-left: 5px;
         }
 
         .empty-state {
@@ -302,6 +332,31 @@
         .admin-toggle:hover {
             background: #5568d3;
         }
+
+        .online-indicator {
+            width: 10px;
+            height: 10px;
+            background: #28a745;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .ai-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
@@ -320,13 +375,13 @@
         <div class="chat-section">
             <div class="header">
                 <h1>🤖 AIAI</h1>
-                <p>Votre assistant intelligent interactif</p>
+                <p>Votre assistant intelligent propulsé par IA</p>
             </div>
             <div class="messages" id="chatMessages"></div>
             <div class="input-area">
                 <div class="input-container">
                     <input type="text" id="userInput" placeholder="Posez votre question à AIAI..." />
-                    <button onclick="sendMessage()">Envoyer</button>
+                    <button onclick="sendMessage()" id="sendBtn">Envoyer</button>
                 </div>
             </div>
         </div>
@@ -337,6 +392,8 @@
                 <h2>📋 Panneau Admin</h2>
             </div>
             <div class="status">
+                <span class="online-indicator"></span>
+                <strong>Connecté</strong> <span class="ai-badge">IA Activée</span><br>
                 <strong>Questions en attente:</strong> <span id="pendingCount">0</span>
             </div>
             <div class="pending-questions" id="pendingQuestions">
@@ -347,52 +404,85 @@
         </div>
     </div>
 
-    <script>
-        const ADMIN_PASSWORD = "admin123"; // Changez ce mot de passe !
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, push, onValue, remove, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+        // Configuration Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyBzRKxLxzdnqYJ6Mwv145Zh2SpSRkxhFPA",
+            authDomain: "aiai-chat-3c789.firebaseapp.com",
+            projectId: "aiai-chat-3c789",
+            storageBucket: "aiai-chat-3c789.firebasestorage.app",
+            messagingSenderId: "669942314179",
+            appId: "1:669942314179:web:71f70a01153bb9d792de76",
+            databaseURL: "https://aiai-chat-3c789-default-rtdb.firebaseio.com"
+        };
+
+        // Configuration Groq AI
+        const GROQ_API_KEY = "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";
+        const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+        // Initialiser Firebase
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // Variables globales
+        const ADMIN_PASSWORD = "admin123";
         let isAdminLoggedIn = false;
-        let messages = [];
-        let pendingQuestions = [];
-
-        // Charger les données au démarrage
-        async function init() {
-            await loadFromStorage();
-            loadMessages();
-            loadPendingQuestions();
+        let userId = localStorage.getItem('aiai-userId');
+        
+        if (!userId) {
+            userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('aiai-userId', userId);
         }
 
-        async function loadFromStorage() {
-            try {
-                const messagesData = await window.storage.get('aiai-messages');
-                if (messagesData) {
-                    messages = JSON.parse(messagesData.value);
-                } else {
-                    // Message de bienvenue
-                    messages = [{
-                        type: 'ai',
-                        text: 'Bonjour ! Je suis AIAI, votre assistant intelligent. Comment puis-je vous aider aujourd\'hui ?',
-                        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                    }];
+        console.log('User ID:', userId);
+
+        // Références Firebase
+        const messagesRef = ref(database, 'conversations/' + userId + '/messages');
+        const allPendingRef = ref(database, 'pending');
+
+        // Initialisation
+        window.addEventListener('DOMContentLoaded', () => {
+            initChat();
+            initAdmin();
+            
+            // Message de bienvenue
+            get(messagesRef).then((snapshot) => {
+                if (!snapshot.exists() || snapshot.val() === null || Object.keys(snapshot.val()).length === 0) {
+                    sendAIMessage('Bonjour ! Je suis AIAI, votre assistant intelligent propulsé par une vraie IA. Je peux répondre à toutes vos questions de manière détaillée et précise. Comment puis-je vous aider aujourd\'hui ? 😊');
                 }
+            });
+        });
 
-                const pendingData = await window.storage.get('aiai-pending');
-                if (pendingData) {
-                    pendingQuestions = JSON.parse(pendingData.value);
-                }
-            } catch (error) {
-                console.log('Première utilisation, données initialisées');
-            }
+        function initChat() {
+            onValue(messagesRef, (snapshot) => {
+                const messages = [];
+                snapshot.forEach((childSnapshot) => {
+                    messages.push(childSnapshot.val());
+                });
+                messages.sort((a, b) => a.timestamp - b.timestamp);
+                displayMessages(messages);
+            });
         }
 
-        async function saveToStorage() {
-            try {
-                await window.storage.set('aiai-messages', JSON.stringify(messages));
-                await window.storage.set('aiai-pending', JSON.stringify(pendingQuestions));
-            } catch (error) {
-                console.error('Erreur de sauvegarde:', error);
-            }
+        function initAdmin() {
+            onValue(allPendingRef, (snapshot) => {
+                const pending = [];
+                snapshot.forEach((childSnapshot) => {
+                    pending.push({
+                        id: childSnapshot.key,
+                        ...childSnapshot.val()
+                    });
+                });
+                pending.sort((a, b) => b.timestamp - a.timestamp);
+                displayPending(pending);
+            });
         }
 
-        function loadMessages() {
+        function displayMessages(messages) {
             const chatDiv = document.getElementById('chatMessages');
             chatDiv.innerHTML = messages.map(msg => `
                 <div class="message message-${msg.type}">
@@ -405,61 +495,75 @@
             chatDiv.scrollTop = chatDiv.scrollHeight;
         }
 
-        function loadPendingQuestions() {
+        function displayPending(pending) {
             const pendingDiv = document.getElementById('pendingQuestions');
             const countSpan = document.getElementById('pendingCount');
             
-            countSpan.textContent = pendingQuestions.length;
+            countSpan.textContent = pending.length;
 
-            if (pendingQuestions.length === 0) {
+            if (pending.length === 0) {
                 pendingDiv.innerHTML = '<div class="empty-state">Aucune question en attente</div>';
                 return;
             }
 
-            pendingDiv.innerHTML = pendingQuestions.map((q, index) => `
+            pendingDiv.innerHTML = pending.map((q) => `
                 <div class="pending-item">
-                    <div class="pending-question">${q.text}</div>
-                    <div class="pending-time">${q.time}</div>
-                    <input type="text" class="response-input" id="response-${index}" placeholder="Votre réponse..." />
+                    <div class="pending-question">"${q.text}"</div>
+                    <div class="user-id">👤 ${q.userId.substring(0, 15)}...</div>
+                    <div class="pending-time">🕐 ${q.time}</div>
+                    <textarea class="response-input" id="response-${q.id}" placeholder="Votre réponse personnalisée..."></textarea>
                     <div class="action-buttons">
-                        <button class="btn-respond" onclick="respondManually(${index})">Répondre</button>
-                        <button class="btn-auto" onclick="autoRespond(${index})">Auto-réponse</button>
+                        <button class="btn-respond" onclick="window.respondManually('${q.id}', '${q.userId}')">✍️ Répondre</button>
+                        <button class="btn-auto" id="auto-btn-${q.id}" onclick="window.autoRespond('${q.id}', '${q.userId}', \`${q.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`)">🤖 IA Auto</button>
                     </div>
                 </div>
             `).join('');
         }
 
-        async function sendMessage() {
+        async function sendAIMessage(text) {
+            const now = new Date();
+            const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+            await push(messagesRef, {
+                type: 'ai',
+                text: text,
+                time: time,
+                timestamp: now.getTime()
+            });
+        }
+
+        window.sendMessage = async function() {
             const input = document.getElementById('userInput');
+            const sendBtn = document.getElementById('sendBtn');
             const text = input.value.trim();
             
             if (!text) return;
 
+            sendBtn.disabled = true;
             const now = new Date();
             const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-            // Ajouter le message de l'utilisateur
-            messages.push({
+            await push(messagesRef, {
                 type: 'user',
-                text: text,
-                time: time
-            });
-
-            // Ajouter à la file d'attente admin
-            pendingQuestions.push({
                 text: text,
                 time: time,
                 timestamp: now.getTime()
             });
 
+            await push(allPendingRef, {
+                text: text,
+                time: time,
+                timestamp: now.getTime(),
+                userId: userId
+            });
+
             input.value = '';
-            await saveToStorage();
-            loadMessages();
-            loadPendingQuestions();
+            sendBtn.disabled = false;
+            input.focus();
         }
 
-        async function respondManually(index) {
-            const responseInput = document.getElementById(`response-${index}`);
+        window.respondManually = async function(questionId, targetUserId) {
+            const responseInput = document.getElementById(`response-${questionId}`);
             const responseText = responseInput.value.trim();
 
             if (!responseText) {
@@ -470,95 +574,79 @@
             const now = new Date();
             const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-            messages.push({
+            const userMessagesRef = ref(database, 'conversations/' + targetUserId + '/messages');
+            await push(userMessagesRef, {
                 type: 'ai',
                 text: responseText,
-                time: time
+                time: time,
+                timestamp: now.getTime()
             });
 
-            pendingQuestions.splice(index, 1);
-            await saveToStorage();
-            loadMessages();
-            loadPendingQuestions();
+            await remove(ref(database, 'pending/' + questionId));
         }
 
-        function generateSmartResponse(question) {
-            const q = question.toLowerCase();
-            
-            // Salutations
-            if (q.match(/bonjour|salut|hello|coucou|hey/)) {
-                const greetings = [
-                    "Bonjour ! Comment puis-je vous aider aujourd'hui ?",
-                    "Salut ! Ravi de vous voir ! En quoi puis-je vous être utile ?",
-                    "Hello ! Je suis là pour vous aider. Que puis-je faire pour vous ?"
-                ];
-                return greetings[Math.floor(Math.random() * greetings.length)];
+        // Fonction pour appeler l'IA Groq
+        async function callGroqAI(question) {
+            try {
+                const response = await fetch(GROQ_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${GROQ_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "llama-3.1-70b-versatile",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle, conversationnelle et empathique. Tu es là pour aider les utilisateurs avec leurs questions, donner des explications claires, des conseils pratiques, et discuter de divers sujets. Reste toujours poli, positif et engageant. Adapte ton ton à la question : formel pour les questions sérieuses, décontracté pour les discussions amicales."
+                            },
+                            {
+                                role: "user",
+                                content: question
+                            }
+                        ],
+                        temperature: 0.7,
+                        max_tokens: 500
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erreur API: ${response.status}`);
+                }
+
+                const data = await response.json();
+                return data.choices[0].message.content;
+            } catch (error) {
+                console.error('Erreur IA:', error);
+                return "Désolé, je rencontre un problème technique momentané. Pourriez-vous reformuler votre question ? 😊";
             }
-            
-            // Comment vas-tu
-            if (q.match(/comment (vas|va|allez|ça va)/)) {
-                const wellnessResponses = [
-                    "Je vais très bien, merci ! Prêt à vous aider. Et vous ?",
-                    "Parfaitement bien ! Je suis en pleine forme pour répondre à vos questions.",
-                    "Ça va super ! Merci de demander. Comment puis-je vous aider aujourd'hui ?"
-                ];
-                return wellnessResponses[Math.floor(Math.random() * wellnessResponses.length)];
-            }
-            
-            // Qui es-tu / Ton nom
-            if (q.match(/qui (es|est)|ton nom|tu t'appelles|c'est quoi|what is/)) {
-                return "Je m'appelle AIAI, je suis un assistant intelligent conçu pour répondre à vos questions et vous aider au quotidien !";
-            }
-            
-            // Qu'est-ce que tu peux faire
-            if (q.match(/que (peux|peut)|qu'est-ce|capacités|fonctions/)) {
-                return "Je peux répondre à vos questions, discuter avec vous, vous donner des informations et vous assister dans diverses tâches. N'hésitez pas à me poser vos questions !";
-            }
-            
-            // Merci
-            if (q.match(/merci|thank/)) {
-                const thanksResponses = [
-                    "De rien ! C'est un plaisir de vous aider !",
-                    "Avec plaisir ! N'hésitez pas si vous avez d'autres questions.",
-                    "Je vous en prie ! Ravi d'avoir pu vous aider."
-                ];
-                return thanksResponses[Math.floor(Math.random() * thanksResponses.length)];
-            }
-            
-            // Au revoir
-            if (q.match(/au revoir|bye|à bientôt|salut|ciao/)) {
-                return "Au revoir ! À bientôt ! N'hésitez pas à revenir si vous avez d'autres questions.";
-            }
-            
-            // Blagues
-            if (q.match(/blague|joke|rigol|marrant/)) {
-                return "Pourquoi les plongeurs plongent-ils toujours en arrière ? Parce que sinon ils tombent dans le bateau ! 😄";
-            }
-            
-            // Par défaut - réponse intelligente générique
-            return `Excellente question ! Concernant "${question}", je dirais que c'est un sujet intéressant qui mérite réflexion. Pouvez-vous préciser votre demande pour que je puisse vous donner une réponse plus détaillée ?`;
         }
 
-        async function autoRespond(index) {
-            const question = pendingQuestions[index].text;
-            const autoResponse = generateSmartResponse(question);
+        window.autoRespond = async function(questionId, targetUserId, questionText) {
+            const autoBtn = document.getElementById(`auto-btn-${questionId}`);
+            if (autoBtn) {
+                autoBtn.classList.add('loading');
+                autoBtn.textContent = '⏳ IA en cours...';
+            }
+
+            const aiResponse = await callGroqAI(questionText);
             
             const now = new Date();
             const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-            messages.push({
+            const userMessagesRef = ref(database, 'conversations/' + targetUserId + '/messages');
+            await push(userMessagesRef, {
                 type: 'ai',
-                text: autoResponse,
-                time: time
+                text: aiResponse,
+                time: time,
+                timestamp: now.getTime()
             });
 
-            pendingQuestions.splice(index, 1);
-            await saveToStorage();
-            loadMessages();
-            loadPendingQuestions();
+            await remove(ref(database, 'pending/' + questionId));
         }
 
-        function toggleAdminPanel() {
+        window.toggleAdminPanel = function() {
             if (!isAdminLoggedIn) {
                 document.getElementById('loginOverlay').style.display = 'flex';
             } else {
@@ -567,7 +655,7 @@
             }
         }
 
-        function checkAdminPassword() {
+        window.checkAdminPassword = function() {
             const password = document.getElementById('adminPassword').value;
             if (password === ADMIN_PASSWORD) {
                 isAdminLoggedIn = true;
@@ -579,21 +667,17 @@
             }
         }
 
-        // Permettre l'envoi avec la touche Entrée
         document.getElementById('userInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                sendMessage();
+                window.sendMessage();
             }
         });
 
         document.getElementById('adminPassword').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                checkAdminPassword();
+                window.checkAdminPassword();
             }
         });
-
-        // Initialisation
-        init();
     </script>
 </body>
 </html>
