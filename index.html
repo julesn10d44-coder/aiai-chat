@@ -903,6 +903,8 @@
         const userConversationsRef = ref(database, 'users/' + userId + '/conversations');
         const allPendingRef = ref(database, 'pending');
         const allUsersRef = ref(database, 'users');
+        const hiddenUsersRef = ref(database, 'admin/hiddenUsers');
+        let hiddenUsers = {};
 
         window.addEventListener('DOMContentLoaded', () => {
             if (!userPseudo) {
