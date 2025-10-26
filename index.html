@@ -1139,6 +1139,18 @@
                 displayPending(pending);
             });
 
+            onValue(hiddenUsersRef, (snapshot) => {
+                hiddenUsers = {};
+                if (snapshot.exists()) {
+                    snapshot.forEach((childSnapshot) => {
+                        hiddenUsers[childSnapshot.key] = true;
+                    });
+                }
+                if (currentAdminTab === 'users') {
+                    displayUsersList();
+                }
+            });
+
             onValue(allUsersRef, (snapshot) => {
                 allUsers = {};
                 const promises = [];
@@ -1202,7 +1214,7 @@
             usersDiv.style.display = 'block';
             userDetailDiv.style.display = 'none';
 
-            const usersArray = Object.values(allUsers);
+            const usersArray = Object.values(allUsers).filter(user => !hiddenUsers[user.id]);
             
             if (usersArray.length === 0) {
                 usersDiv.innerHTML = '<div class="empty-state">Aucun utilisateur</div>';
@@ -1236,41 +1248,59 @@
             userDetailDiv.style.display = 'block';
 
             const user = allUsers[uid];
-            let allMessages = [];
+            let conversationsArray = [];
 
             for (const [convId, convData] of Object.entries(user.conversations)) {
+                let messages = [];
                 if (convData.messages) {
-                    Object.values(convData.messages).forEach(msg => {
-                        allMessages.push({
-                            ...msg,
-                            convId: convId,
-                            convTitle: convData.title || 'Sans titre'
-                        });
-                    });
+                    messages = Object.values(convData.messages);
+                    messages.sort((a, b) => a.timestamp - b.timestamp);
                 }
+                
+                conversationsArray.push({
+                    convId: convId,
+                    title: convData.title || 'Sans titre',
+                    lastMessageTime: convData.lastMessageTime || 0,
+                    messages: messages
+                });
             }
 
-            allMessages.sort((a, b) => a.timestamp - b.timestamp);
+            conversationsArray.sort((a, b) => b.lastMessageTime - a.lastMessageTime);
 
             let html = `
-                <button class="back-btn" onclick="displayUsersList()">← Retour</button>
+                <button class="back-btn" onclick="window.displayUsersList()">← Retour</button>
                 <div class="user-messages">
                     <div class="user-name">👤 ${user.pseudo}</div>
-                    <div class="user-stats">Total: ${allMessages.length} message(s)</div>
-                    <button class="delete-user-btn" onclick="deleteUserConversations('${uid}', '${user.pseudo}')">🗑️ Supprimer toutes les conversations</button>
+                    <div class="user-stats">Total: ${conversationsArray.length} conversation(s)</div>
+                    <button class="delete-user-btn" onclick="window.hideUserFromAdmin('${uid}', '${user.pseudo}')">👁️‍🗨️ Masquer cet utilisateur complètement</button>
                     <hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">
             `;
 
-            if (allMessages.length === 0) {
-                html += '<div class="empty-state">Aucun message</div>';
+            if (conversationsArray.length === 0) {
+                html += '<div class="empty-state">Aucune conversation</div>';
             } else {
-                allMessages.forEach(msg => {
+                conversationsArray.forEach(conv => {
                     html += `
-                        <div class="message-item ${msg.type}">
-                            <div class="message-text"><strong>${msg.type === 'user' ? user.pseudo : 'AIAI'}:</strong> ${msg.text}</div>
-                            <div class="message-meta">${msg.time} - ${msg.convTitle}</div>
-                        </div>
+                        <div style="background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <strong style="color: #667eea;">📝 ${conv.title}</strong>
+                                <button class="delete-user-btn" style="margin: 0; padding: 5px 10px; font-size: 11px;" onclick="window.deleteSpecificConversation('${uid}', '${conv.convId}', '${user.pseudo}')">🗑️ Supprimer</button>
+                            </div>
+                            <div style="font-size: 11px; color: #999; margin-bottom: 10px;">
+                                ${conv.lastMessageTime ? new Date(conv.lastMessageTime).toLocaleString('fr-FR') : 'Date inconnue'}
+                            </div>
                     `;
+                    
+                    conv.messages.forEach(msg => {
+                        html += `
+                            <div class="message-item ${msg.type}">
+                                <div class="message-text"><strong>${msg.type === 'user' ? user.pseudo : 'AIAI'}:</strong> ${msg.text}</div>
+                                <div class="message-meta">${msg.time}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div>';
                 });
             }
 
@@ -1279,12 +1309,15 @@
         }
 
         window.deleteUserConversations = async function(uid, pseudo) {
-            if (!confirm(`Supprimer TOUTES les conversations de ${pseudo} ? Cette action est irréversible.`)) return;
+            if (!confirm(`Masquer ${pseudo} de la liste admin ? (Ses conversations restent intactes pour lui)`)) return;
 
-            const userConvRef = ref(database, 'users/' + uid + '/conversations');
-            await remove(userConvRef);
+            const hideUserRef = ref(database, 'admin/hiddenUsers/' + uid);
+            await set(hideUserRef, {
+                pseudo: pseudo,
+                hiddenAt: Date.now()
+            });
 
-            alert('Conversations supprimées avec succès');
+            alert(`${pseudo} a été masqué de votre liste admin`);
             displayUsersList();
         }
 
