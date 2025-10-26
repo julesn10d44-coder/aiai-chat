@@ -1422,8 +1422,17 @@
             await remove(ref(database, 'pending/' + questionId));
         }
 
-        async function callGroqAI(question) {
+        async function callGroqAI(question, conversationHistory = []) {
             try {
+                // Construire le contexte avec TOUS les messages de la conversation
+                const messages = [
+                    {
+                        role: "system",
+                        content: "Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle et conversationnelle. Tu donnes des réponses précises, détaillées et utiles. Tu te souviens de toute la conversation et tu peux y faire référence."
+                    },
+                    ...conversationHistory
+                ];
+
                 const response = await fetch(GROQ_API_URL, {
                     method: 'POST',
                     headers: {
@@ -1432,16 +1441,7 @@
                     },
                     body: JSON.stringify({
                         model: "llama-3.3-70b-versatile",
-                        messages: [
-                            {
-                                role: "system",
-                                content: "Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle et conversationnelle. Tu donnes des réponses précises, détaillées et utiles."
-                            },
-                            {
-                                role: "user",
-                                content: question
-                            }
-                        ],
+                        messages: messages,
                         temperature: 0.7,
                         max_tokens: 800
                     })
@@ -1471,7 +1471,26 @@
                 autoBtn.disabled = true;
             }
 
-            const aiResponse = await callGroqAI(questionText);
+            // Récupérer TOUS les messages de la conversation pour le contexte
+            const convMessagesRef = ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages');
+            const messagesSnapshot = await get(convMessagesRef);
+            
+            let conversationHistory = [];
+            if (messagesSnapshot.exists()) {
+                const messages = [];
+                messagesSnapshot.forEach((childSnapshot) => {
+                    messages.push(childSnapshot.val());
+                });
+                messages.sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Convertir les messages en format pour l'IA
+                conversationHistory = messages.map(msg => ({
+                    role: msg.type === 'user' ? 'user' : 'assistant',
+                    content: msg.text
+                }));
+            }
+
+            const aiResponse = await callGroqAI(questionText, conversationHistory);
             
             const now = Date.now();
             const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
