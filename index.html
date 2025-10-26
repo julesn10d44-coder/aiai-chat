@@ -1154,6 +1154,11 @@
             }
         }
 
+        window.closeLoginOverlay = function() {
+            document.getElementById('loginOverlay').style.display = 'none';
+            document.getElementById('adminPassword').value = '';
+        }
+
         window.checkAdminPassword = function() {
             const password = document.getElementById('adminPassword').value;
             if (password === ADMIN_PASSWORD) {
