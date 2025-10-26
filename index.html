@@ -32,7 +32,6 @@
             overflow: hidden;
         }
 
-        /* Sidebar Historique */
         .sidebar {
             width: 280px;
             background: #2c3e50;
@@ -95,9 +94,16 @@
             background: #667eea;
         }
 
-        .conversation-preview {
-            font-size: 13px;
+        .conversation-title {
+            font-size: 14px;
+            font-weight: bold;
             color: #ecf0f1;
+            margin-bottom: 5px;
+        }
+
+        .conversation-preview {
+            font-size: 12px;
+            color: #95a5a6;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -106,7 +112,7 @@
 
         .conversation-time {
             font-size: 11px;
-            color: #95a5a6;
+            color: #7f8c8d;
         }
 
         .delete-conv-btn {
@@ -134,7 +140,6 @@
             background: #c0392b;
         }
 
-        /* Chat Section */
         .chat-section {
             flex: 1;
             display: flex;
@@ -493,7 +498,6 @@
     <button class="admin-toggle" onclick="toggleAdminPanel()">👤 Admin</button>
 
     <div class="container">
-        <!-- Sidebar Historique -->
         <div class="sidebar">
             <div class="sidebar-header">
                 <h2>💬 Mes Conversations</h2>
@@ -504,7 +508,6 @@
             </div>
         </div>
 
-        <!-- Section Chat -->
         <div class="chat-section">
             <div class="header">
                 <h1>🤖 AIAI</h1>
@@ -524,7 +527,6 @@
             </div>
         </div>
 
-        <!-- Section Admin -->
         <div class="admin-section hidden" id="adminSection">
             <div class="admin-header">
                 <h2>📋 Panneau Admin</h2>
@@ -544,7 +546,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, push, onValue, remove, get, set } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        import { getDatabase, ref, push, onValue, remove, get, set, update } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBzRKxLxzdnqYJ6Mwv145Zh2SpSRkxhFPA",
@@ -590,10 +592,10 @@
                         ...childSnapshot.val()
                     });
                 });
-                userConversations.sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+                userConversations.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
                 displayConversationsList();
                 
-                if (currentConversationId) {
+                if (currentConversationId && userConversations.find(c => c.id === currentConversationId)) {
                     loadConversation(currentConversationId);
                 } else if (userConversations.length > 0) {
                     loadConversation(userConversations[0].id);
@@ -611,21 +613,59 @@
 
             listDiv.innerHTML = userConversations.map(conv => `
                 <div class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}" onclick="loadConversation('${conv.id}')">
-                    <div class="conversation-preview">${conv.preview || 'Nouvelle conversation'}</div>
-                    <div class="conversation-time">${new Date(conv.lastMessageTime).toLocaleString('fr-FR', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}</div>
+                    <div class="conversation-title">${conv.title || 'Nouvelle conversation'}</div>
+                    <div class="conversation-preview">${conv.preview || ''}</div>
+                    <div class="conversation-time">${conv.lastMessageTime ? new Date(conv.lastMessageTime).toLocaleString('fr-FR', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'}) : ''}</div>
                     <button class="delete-conv-btn" onclick="event.stopPropagation(); deleteConversation('${conv.id}')">×</button>
                 </div>
             `).join('');
         }
 
+        async function generateTitle(firstMessage) {
+            try {
+                const response = await fetch(GROQ_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${GROQ_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "llama-3.1-70b-versatile",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "Tu dois générer un titre court (max 4 mots) qui résume le sujet principal. Réponds UNIQUEMENT avec le titre, sans guillemets ni ponctuation finale."
+                            },
+                            {
+                                role: "user",
+                                content: `Génère un titre court pour cette question : "${firstMessage}"`
+                            }
+                        ],
+                        temperature: 0.5,
+                        max_tokens: 20
+                    })
+                });
+
+                const data = await response.json();
+                if (data.choices && data.choices[0]) {
+                    return data.choices[0].message.content.trim();
+                }
+            } catch (error) {
+                console.error('Erreur génération titre:', error);
+            }
+            return firstMessage.substring(0, 30) + (firstMessage.length > 30 ? '...' : '');
+        }
+
         window.createNewConversation = async function() {
             const convId = 'conv_' + Date.now();
+            const now = Date.now();
             const convRef = ref(database, 'users/' + userId + '/conversations/' + convId);
             
             await set(convRef, {
-                createdAt: Date.now(),
-                lastMessageTime: Date.now(),
-                preview: 'Nouvelle conversation'
+                createdAt: now,
+                lastMessageTime: now,
+                title: 'Nouvelle conversation',
+                preview: ''
             });
 
             const messagesRef = ref(database, 'users/' + userId + '/conversations/' + convId + '/messages');
@@ -633,7 +673,7 @@
                 type: 'ai',
                 text: 'Bonjour ! Je suis AIAI, votre assistant intelligent. Comment puis-je vous aider aujourd\'hui ? 😊',
                 time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-                timestamp: Date.now()
+                timestamp: now
             });
 
             currentConversationId = convId;
@@ -752,9 +792,18 @@
             });
 
             const convRef = ref(database, 'users/' + userId + '/conversations/' + currentConversationId);
-            await set(convRef, {
+            const convSnapshot = await get(convRef);
+            const convData = convSnapshot.val();
+            
+            let title = convData.title;
+            if (title === 'Nouvelle conversation') {
+                title = await generateTitle(text);
+            }
+
+            await update(convRef, {
                 lastMessageTime: now,
-                preview: text.substring(0, 50)
+                preview: text.substring(0, 50),
+                title: title
             });
 
             await push(allPendingRef, {
@@ -795,6 +844,7 @@
 
         async function callGroqAI(question) {
             try {
+                console.log('Appel IA pour:', question);
                 const response = await fetch(GROQ_API_URL, {
                     method: 'POST',
                     headers: {
@@ -806,7 +856,7 @@
                         messages: [
                             {
                                 role: "system",
-                                content: "Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle et conversationnelle. Sois concis mais informatif."
+                                content: "Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle et conversationnelle."
                             },
                             {
                                 role: "user",
@@ -818,13 +868,21 @@
                     })
                 });
 
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Erreur API:', response.status, errorText);
+                    throw new Error(`Erreur ${response.status}`);
+                }
+
                 const data = await response.json();
-                if (data.choices && data.choices[0]) {
+                console.log('Réponse IA:', data);
+                
+                if (data.choices && data.choices[0] && data.choices[0].message) {
                     return data.choices[0].message.content;
                 }
-                throw new Error('Réponse invalide');
+                throw new Error('Format de réponse invalide');
             } catch (error) {
-                console.error('Erreur IA:', error);
+                console.error('Erreur complète:', error);
                 return "Désolé, je rencontre un problème technique. Essayez de reformuler votre question.";
             }
         }
@@ -834,6 +892,7 @@
             if (autoBtn) {
                 autoBtn.classList.add('loading');
                 autoBtn.textContent = '⏳ IA...';
+                autoBtn.disabled = true;
             }
 
             const aiResponse = await callGroqAI(questionText);
@@ -854,35 +913,5 @@
 
         window.toggleAdminPanel = function() {
             if (!isAdminLoggedIn) {
-                document.getElementById('loginOverlay').style.display = 'flex';
-            } else {
-                document.getElementById('adminSection').classList.toggle('hidden');
-            }
-        }
-
-        window.checkAdminPassword = function() {
-            const password = document.getElementById('adminPassword').value;
-            if (password === ADMIN_PASSWORD) {
-                isAdminLoggedIn = true;
-                document.getElementById('loginOverlay').style.display = 'none';
-                document.getElementById('adminSection').classList.remove('hidden');
-                document.getElementById('adminPassword').value = '';
-            } else {
-                alert('Mot de passe incorrect !');
-            }
-        }
-
-        document.getElementById('userInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                window.sendMessage();
-            }
-        });
-
-        document.getElementById('adminPassword').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                window.checkAdminPassword();
-            }
-        });
-    </script>
-</body>
+                document.getElementById('loginOverlay').style.display = '
 </html>
