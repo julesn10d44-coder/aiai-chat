@@ -152,10 +152,33 @@
             display: flex;
             flex-direction: column;
             border-left: 2px solid #e0e0e0;
+            position: relative;
         }
 
         .admin-section.hidden {
             display: none;
+        }
+
+        .admin-close-btn {
+            display: none;
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);
+        }
+
+        .admin-close-btn:hover {
+            background: #c0392b;
         }
 
         .header {
@@ -427,19 +450,22 @@
             position: fixed;
             bottom: 20px;
             right: 20px;
-            background: #667eea;
+            background: #95a5a6;
             color: white;
             border: none;
-            padding: 15px 25px;
+            padding: 10px 18px;
             border-radius: 50px;
             cursor: pointer;
-            font-weight: bold;
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            font-weight: normal;
+            font-size: 13px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             z-index: 100;
+            opacity: 0.6;
         }
 
         .admin-toggle:hover {
-            background: #5568d3;
+            background: #7f8c8d;
+            opacity: 0.8;
         }
 
         .online-indicator {
@@ -512,8 +538,9 @@
 
             .admin-section {
                 position: fixed;
-                right: -450px;
+                right: -100%;
                 top: 0;
+                width: 100%;
                 height: 100%;
                 z-index: 999;
                 transition: right 0.3s ease;
@@ -521,6 +548,10 @@
 
             .admin-section.open {
                 right: 0;
+            }
+
+            .admin-close-btn {
+                display: block;
             }
 
             .menu-toggle {
@@ -542,8 +573,8 @@
             .admin-toggle {
                 bottom: 80px;
                 right: 20px;
-                padding: 12px 20px;
-                font-size: 14px;
+                padding: 10px 16px;
+                font-size: 12px;
             }
 
             .overlay {
@@ -614,16 +645,18 @@
 <body>
     <div id="loginOverlay" class="login-overlay" style="display: none;">
         <div class="login-box">
-            <h2>🔒 Accès Admin</h2>
-            <input type="password" id="adminPassword" placeholder="Mot de passe admin" />
+            <h2>🔒 Accès</h2>
+            <input type="password" id="adminPassword" placeholder="Mot de passe" />
             <button onclick="checkAdminPassword()">Connexion</button>
         </div>
     </div>
 
-    <button class="admin-toggle" onclick="toggleAdminPanel()">👤 Admin</button>
+    <button class="menu-toggle" onclick="toggleSidebar()" style="display: none;">☰</button>
+    <button class="admin-toggle" onclick="toggleAdminPanel()">⚙️ Partager</button>
+    <div class="overlay" id="overlay" onclick="closeAll()"></div>
 
     <div class="container">
-        <div class="sidebar">
+        <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <h2>💬 Mes Conversations</h2>
                 <button class="new-chat-btn" onclick="createNewConversation()">➕ Nouvelle conversation</button>
@@ -653,6 +686,7 @@
         </div>
 
         <div class="admin-section hidden" id="adminSection">
+            <button class="admin-close-btn" onclick="closeAdminPanel()">×</button>
             <div class="admin-header">
                 <h2>📋 Panneau Admin</h2>
             </div>
@@ -706,7 +740,45 @@
         window.addEventListener('DOMContentLoaded', () => {
             loadUserConversations();
             initAdmin();
+            checkMobileView();
         });
+
+        window.addEventListener('resize', checkMobileView);
+
+        function checkMobileView() {
+            const menuBtn = document.querySelector('.menu-toggle');
+            if (window.innerWidth <= 768) {
+                menuBtn.style.display = 'block';
+            } else {
+                menuBtn.style.display = 'none';
+            }
+        }
+
+        window.toggleSidebar = function() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('overlay');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+        }
+
+        window.closeAll = function() {
+            const sidebar = document.getElementById('sidebar');
+            const adminSection = document.getElementById('adminSection');
+            const overlay = document.getElementById('overlay');
+            sidebar.classList.remove('open');
+            adminSection.classList.remove('open');
+            overlay.classList.remove('active');
+        }
+
+        window.closeAdminPanel = function() {
+            const adminSection = document.getElementById('adminSection');
+            const overlay = document.getElementById('overlay');
+            adminSection.classList.remove('open');
+            overlay.classList.remove('active');
+            if (window.innerWidth > 768) {
+                adminSection.classList.add('hidden');
+            }
+        }
 
         function loadUserConversations() {
             onValue(userConversationsRef, (snapshot) => {
@@ -803,6 +875,10 @@
 
             currentConversationId = convId;
             localStorage.setItem('aiai-currentConv', convId);
+            
+            if (window.innerWidth <= 768) {
+                closeAll();
+            }
         }
 
         window.loadConversation = function(convId) {
@@ -819,6 +895,10 @@
                 messages.sort((a, b) => a.timestamp - b.timestamp);
                 displayMessages(messages);
             });
+            
+            if (window.innerWidth <= 768) {
+                closeAll();
+            }
         }
 
         window.deleteConversation = async function(convId) {
@@ -1040,7 +1120,15 @@
             if (!isAdminLoggedIn) {
                 document.getElementById('loginOverlay').style.display = 'flex';
             } else {
-                document.getElementById('adminSection').classList.toggle('hidden');
+                const adminSection = document.getElementById('adminSection');
+                const overlay = document.getElementById('overlay');
+                
+                if (window.innerWidth <= 768) {
+                    adminSection.classList.toggle('open');
+                    overlay.classList.toggle('active');
+                } else {
+                    adminSection.classList.toggle('hidden');
+                }
             }
         }
 
@@ -1049,7 +1137,17 @@
             if (password === ADMIN_PASSWORD) {
                 isAdminLoggedIn = true;
                 document.getElementById('loginOverlay').style.display = 'none';
-                document.getElementById('adminSection').classList.remove('hidden');
+                const adminSection = document.getElementById('adminSection');
+                const overlay = document.getElementById('overlay');
+                
+                if (window.innerWidth <= 768) {
+                    adminSection.classList.remove('hidden');
+                    adminSection.classList.add('open');
+                    overlay.classList.add('active');
+                } else {
+                    adminSection.classList.remove('hidden');
+                }
+                
                 document.getElementById('adminPassword').value = '';
             } else {
                 alert('Mot de passe incorrect !');
