@@ -434,6 +434,7 @@
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             text-align: center;
+            position: relative;
         }
 
         .login-box h2 {
@@ -444,6 +445,26 @@
         .login-box input {
             width: 100%;
             margin-bottom: 15px;
+        }
+
+        .close-login-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);
+        }
+
+        .close-login-btn:hover {
+            background: #c0392b;
         }
 
         .admin-toggle {
@@ -645,6 +666,7 @@
 <body>
     <div id="loginOverlay" class="login-overlay" style="display: none;">
         <div class="login-box">
+            <button class="close-login-btn" onclick="closeLoginOverlay()">×</button>
             <h2>🔒 Accès</h2>
             <input type="password" id="adminPassword" placeholder="Mot de passe" />
             <button onclick="checkAdminPassword()">Connexion</button>
