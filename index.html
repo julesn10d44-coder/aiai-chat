@@ -321,10 +321,101 @@
             font-size: 20px;
         }
 
-        .pending-questions {
+        .admin-tabs {
+            display: flex;
+            background: #e0e0e0;
+            padding: 10px 15px;
+            gap: 10px;
+        }
+
+        .admin-tab {
+            padding: 10px 20px;
+            background: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .admin-tab.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .admin-content {
             flex: 1;
             overflow-y: auto;
             padding: 15px;
+        }
+
+        .pending-questions {
+            display: none;
+        }
+
+        .pending-questions.active {
+            display: block;
+        }
+
+        .users-list {
+            display: none;
+        }
+
+        .users-list.active {
+            display: block;
+        }
+
+        .user-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .user-item:hover {
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        .user-name {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .user-stats {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .user-messages {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .back-btn {
+            margin-bottom: 15px;
+            padding: 10px 20px;
+            background: #95a5a6;
+            font-size: 14px;
+        }
+
+        .delete-user-btn {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #e74c3c;
+            font-size: 12px;
+        }
+
+        .delete-user-btn:hover {
+            background: #c0392b;
         }
 
         .pending-item {
@@ -442,6 +533,11 @@
             color: #667eea;
         }
 
+        .login-box p {
+            margin-bottom: 20px;
+            color: #666;
+        }
+
         .login-box input {
             width: 100%;
             margin-bottom: 15px;
@@ -530,6 +626,32 @@
 
         .empty-chat p {
             font-size: 18px;
+        }
+
+        .message-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 8px;
+            background: #f5f5f5;
+        }
+
+        .message-item.user {
+            background: #e3f2fd;
+            text-align: right;
+        }
+
+        .message-item.ai {
+            background: #f1f8e9;
+        }
+
+        .message-text {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .message-meta {
+            font-size: 11px;
+            color: #999;
         }
 
         /* Responsive Mobile */
@@ -664,8 +786,17 @@
     </style>
 </head>
 <body>
-    <div id="loginOverlay" class="login-overlay" style="display: none;">
+    <div id="pseudoOverlay" class="login-overlay" style="display: none;">
         <div class="login-box">
+            <h2>👋 Bienvenue !</h2>
+            <p>Choisissez un pseudo pour commencer</p>
+            <input type="text" id="pseudoInput" placeholder="Votre pseudo" maxlength="20" />
+            <button onclick="savePseudo()">Continuer</button>
+        </div>
+    </div>
+
+    <div id="loginOverlay" class="login-overlay" style="display: none;" onclick="closeLoginIfClickOutside(event)">
+        <div class="login-box" onclick="event.stopPropagation()">
             <button class="close-login-btn" onclick="closeLoginOverlay()">×</button>
             <h2>🔒 Accès</h2>
             <input type="password" id="adminPassword" placeholder="Mot de passe" />
@@ -712,14 +843,24 @@
             <div class="admin-header">
                 <h2>📋 Panneau Admin</h2>
             </div>
-            <div class="status">
-                <span class="online-indicator"></span>
-                <strong>Connecté</strong> <span class="ai-badge">IA Activée</span><br>
-                <strong>Questions en attente:</strong> <span id="pendingCount">0</span>
+            <div class="admin-tabs">
+                <button class="admin-tab active" onclick="switchAdminTab('pending')">Questions en attente</button>
+                <button class="admin-tab" onclick="switchAdminTab('users')">Utilisateurs</button>
             </div>
-            <div class="pending-questions" id="pendingQuestions">
-                <div class="empty-state">
-                    Aucune question en attente
+            <div class="admin-content">
+                <div class="pending-questions active" id="pendingTab">
+                    <div class="status">
+                        <span class="online-indicator"></span>
+                        <strong>Connecté</strong> <span class="ai-badge">IA Activée</span><br>
+                        <strong>Questions en attente:</strong> <span id="pendingCount">0</span>
+                    </div>
+                    <div id="pendingQuestions">
+                        <div class="empty-state">Aucune question en attente</div>
+                    </div>
+                </div>
+                <div class="users-list" id="usersTab">
+                    <div id="usersList"></div>
+                    <div id="userDetail" style="display: none;"></div>
                 </div>
             </div>
         </div>
@@ -748,8 +889,11 @@
         const ADMIN_PASSWORD = "admin123";
         let isAdminLoggedIn = false;
         let userId = localStorage.getItem('aiai-userId');
-        let currentConversationId = localStorage.getItem('aiai-currentConv');
+        let userPseudo = localStorage.getItem('aiai-userPseudo');
+        let currentConversationId = null;
         let userConversations = [];
+        let currentAdminTab = 'pending';
+        let allUsers = {};
         
         if (!userId) {
             userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -758,12 +902,44 @@
 
         const userConversationsRef = ref(database, 'users/' + userId + '/conversations');
         const allPendingRef = ref(database, 'pending');
+        const allUsersRef = ref(database, 'users');
 
         window.addEventListener('DOMContentLoaded', () => {
+            if (!userPseudo) {
+                document.getElementById('pseudoOverlay').style.display = 'flex';
+            } else {
+                initApp();
+            }
+        });
+
+        window.savePseudo = async function() {
+            const input = document.getElementById('pseudoInput');
+            const pseudo = input.value.trim();
+            
+            if (!pseudo) {
+                alert('Veuillez entrer un pseudo');
+                return;
+            }
+
+            userPseudo = pseudo;
+            localStorage.setItem('aiai-userPseudo', pseudo);
+            
+            const userRef = ref(database, 'users/' + userId + '/profile');
+            await set(userRef, {
+                pseudo: pseudo,
+                createdAt: Date.now()
+            });
+
+            document.getElementById('pseudoOverlay').style.display = 'none';
+            initApp();
+        }
+
+        function initApp() {
             loadUserConversations();
             initAdmin();
             checkMobileView();
-        });
+            createNewConversation();
+        }
 
         window.addEventListener('resize', checkMobileView);
 
@@ -816,8 +992,6 @@
                 
                 if (currentConversationId && userConversations.find(c => c.id === currentConversationId)) {
                     loadConversation(currentConversationId);
-                } else if (userConversations.length > 0) {
-                    loadConversation(userConversations[0].id);
                 }
             });
         }
@@ -890,13 +1064,12 @@
             const messagesRef = ref(database, 'users/' + userId + '/conversations/' + convId + '/messages');
             await push(messagesRef, {
                 type: 'ai',
-                text: 'Bonjour ! Je suis AIAI, votre assistant intelligent. Comment puis-je vous aider aujourd\'hui ? 😊',
+                text: 'Bonjour ' + userPseudo + ' ! Je suis AIAI, votre assistant intelligent. Comment puis-je vous aider aujourd\'hui ? 😊',
                 time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
                 timestamp: now
             });
 
             currentConversationId = convId;
-            localStorage.setItem('aiai-currentConv', convId);
             
             if (window.innerWidth <= 768) {
                 closeAll();
@@ -905,7 +1078,6 @@
 
         window.loadConversation = function(convId) {
             currentConversationId = convId;
-            localStorage.setItem('aiai-currentConv', convId);
             displayConversationsList();
 
             const messagesRef = ref(database, 'users/' + userId + '/conversations/' + convId + '/messages');
@@ -931,7 +1103,6 @@
 
             if (currentConversationId === convId) {
                 currentConversationId = null;
-                localStorage.removeItem('aiai-currentConv');
                 document.getElementById('chatMessages').innerHTML = '<div class="empty-chat"><h2>💬</h2><p>Créez une nouvelle conversation</p></div>';
             }
         }
@@ -965,9 +1136,31 @@
                 pending.sort((a, b) => b.timestamp - a.timestamp);
                 displayPending(pending);
             });
+
+            onValue(allUsersRef, (snapshot) => {
+                allUsers = {};
+                const promises = [];
+                
+                snapshot.forEach((childSnapshot) => {
+                    const uid = childSnapshot.key;
+                    const userData = childSnapshot.val();
+                    
+                    if (userData.profile) {
+                        allUsers[uid] = {
+                            id: uid,
+                            pseudo: userData.profile.pseudo || 'Anonyme',
+                            conversations: userData.conversations || {}
+                        };
+                    }
+                });
+                
+                if (currentAdminTab === 'users') {
+                    displayUsersList();
+                }
+            });
         }
 
-        function displayPending(pending) {
+        async function displayPending(pending) {
             const pendingDiv = document.getElementById('pendingQuestions');
             const countSpan = document.getElementById('pendingCount');
             
@@ -978,10 +1171,17 @@
                 return;
             }
 
-            pendingDiv.innerHTML = pending.map((q) => `
+            const pendingWithPseudo = await Promise.all(pending.map(async (q) => {
+                const userProfileRef = ref(database, 'users/' + q.userId + '/profile');
+                const profileSnap = await get(userProfileRef);
+                const pseudo = profileSnap.exists() ? profileSnap.val().pseudo : 'Anonyme';
+                return { ...q, pseudo };
+            }));
+
+            pendingDiv.innerHTML = pendingWithPseudo.map((q) => `
                 <div class="pending-item">
                     <div class="pending-question">"${q.text}"</div>
-                    <div class="user-id">👤 ${q.userId.substring(0, 15)}...</div>
+                    <div class="user-id">👤 ${q.pseudo}</div>
                     <div class="user-id">📝 Conv: ${q.conversationId.substring(5, 18)}...</div>
                     <div class="pending-time">🕐 ${q.time}</div>
                     <textarea class="response-input" id="response-${q.id}" placeholder="Réponse..."></textarea>
@@ -991,6 +1191,115 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        function displayUsersList() {
+            const usersDiv = document.getElementById('usersList');
+            const userDetailDiv = document.getElementById('userDetail');
+            
+            usersDiv.style.display = 'block';
+            userDetailDiv.style.display = 'none';
+
+            const usersArray = Object.values(allUsers);
+            
+            if (usersArray.length === 0) {
+                usersDiv.innerHTML = '<div class="empty-state">Aucun utilisateur</div>';
+                return;
+            }
+
+            usersDiv.innerHTML = usersArray.map(user => {
+                const convCount = Object.keys(user.conversations).length;
+                let totalMessages = 0;
+                
+                Object.values(user.conversations).forEach(conv => {
+                    if (conv.messages) {
+                        totalMessages += Object.keys(conv.messages).length;
+                    }
+                });
+
+                return `
+                    <div class="user-item" onclick="showUserDetail('${user.id}')">
+                        <div class="user-name">👤 ${user.pseudo}</div>
+                        <div class="user-stats">💬 ${convCount} conversation(s) • 📝 ${totalMessages} message(s)</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.showUserDetail = async function(uid) {
+            const usersDiv = document.getElementById('usersList');
+            const userDetailDiv = document.getElementById('userDetail');
+            
+            usersDiv.style.display = 'none';
+            userDetailDiv.style.display = 'block';
+
+            const user = allUsers[uid];
+            let allMessages = [];
+
+            for (const [convId, convData] of Object.entries(user.conversations)) {
+                if (convData.messages) {
+                    Object.values(convData.messages).forEach(msg => {
+                        allMessages.push({
+                            ...msg,
+                            convId: convId,
+                            convTitle: convData.title || 'Sans titre'
+                        });
+                    });
+                }
+            }
+
+            allMessages.sort((a, b) => a.timestamp - b.timestamp);
+
+            let html = `
+                <button class="back-btn" onclick="displayUsersList()">← Retour</button>
+                <div class="user-messages">
+                    <div class="user-name">👤 ${user.pseudo}</div>
+                    <div class="user-stats">Total: ${allMessages.length} message(s)</div>
+                    <button class="delete-user-btn" onclick="deleteUserConversations('${uid}', '${user.pseudo}')">🗑️ Supprimer toutes les conversations</button>
+                    <hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">
+            `;
+
+            if (allMessages.length === 0) {
+                html += '<div class="empty-state">Aucun message</div>';
+            } else {
+                allMessages.forEach(msg => {
+                    html += `
+                        <div class="message-item ${msg.type}">
+                            <div class="message-text"><strong>${msg.type === 'user' ? user.pseudo : 'AIAI'}:</strong> ${msg.text}</div>
+                            <div class="message-meta">${msg.time} - ${msg.convTitle}</div>
+                        </div>
+                    `;
+                });
+            }
+
+            html += '</div>';
+            userDetailDiv.innerHTML = html;
+        }
+
+        window.deleteUserConversations = async function(uid, pseudo) {
+            if (!confirm(`Supprimer TOUTES les conversations de ${pseudo} ? Cette action est irréversible.`)) return;
+
+            const userConvRef = ref(database, 'users/' + uid + '/conversations');
+            await remove(userConvRef);
+
+            alert('Conversations supprimées avec succès');
+            displayUsersList();
+        }
+
+        window.switchAdminTab = function(tab) {
+            currentAdminTab = tab;
+            
+            document.querySelectorAll('.admin-tab').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.pending-questions, .users-list').forEach(div => div.classList.remove('active'));
+            
+            if (tab === 'pending') {
+                document.querySelector('.admin-tab:nth-child(1)').classList.add('active');
+                document.getElementById('pendingTab').classList.add('active');
+            } else if (tab === 'users') {
+                document.querySelector('.admin-tab:nth-child(2)').classList.add('active');
+                document.getElementById('usersTab').classList.add('active');
+                displayUsersList();
+            }
         }
 
         window.sendMessage = async function() {
@@ -1159,6 +1468,12 @@
             document.getElementById('adminPassword').value = '';
         }
 
+        window.closeLoginIfClickOutside = function(event) {
+            if (event.target.id === 'loginOverlay') {
+                closeLoginOverlay();
+            }
+        }
+
         window.checkAdminPassword = function() {
             const password = document.getElementById('adminPassword').value;
             if (password === ADMIN_PASSWORD) {
@@ -1190,6 +1505,12 @@
         document.getElementById('adminPassword').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 window.checkAdminPassword();
+            }
+        });
+
+        document.getElementById('pseudoInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                window.savePseudo();
             }
         });
     </script>
