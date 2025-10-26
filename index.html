@@ -1359,6 +1359,24 @@
             
             if (!text) return;
 
+            // Vérifier s'il y a déjà un message en attente de réponse
+            const pendingSnapshot = await get(allPendingRef);
+            let hasUnansweredMessage = false;
+            
+            if (pendingSnapshot.exists()) {
+                pendingSnapshot.forEach((childSnapshot) => {
+                    const pending = childSnapshot.val();
+                    if (pending.userId === userId && pending.conversationId === currentConversationId) {
+                        hasUnansweredMessage = true;
+                    }
+                });
+            }
+
+            if (hasUnansweredMessage) {
+                alert('⏳ Veuillez attendre la réponse à votre message précédent avant d\'en envoyer un nouveau.');
+                return;
+            }
+
             sendBtn.disabled = true;
             const now = Date.now();
             const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -1393,6 +1411,13 @@
                 userId: userId,
                 conversationId: currentConversationId
             });
+
+            // Si l'utilisateur était masqué, le rendre visible à nouveau
+            const hiddenUserRef = ref(database, 'admin/hiddenUsers/' + userId);
+            const hiddenSnap = await get(hiddenUserRef);
+            if (hiddenSnap.exists()) {
+                await remove(hiddenUserRef);
+            }
 
             input.value = '';
             sendBtn.disabled = false;
