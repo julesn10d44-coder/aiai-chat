@@ -436,6 +436,118 @@
         .input-container {
             display: flex;
             gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .image-preview {
+            display: none;
+            max-width: 200px;
+            max-height: 150px;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+            object-fit: cover;
+        }
+
+        .image-preview.show {
+            display: block;
+        }
+
+        .file-upload-btn, .voice-btn {
+            background: #95a5a6;
+            padding: 12px;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.3s;
+        }
+
+        .file-upload-btn:hover, .voice-btn:hover {
+            background: #7f8c8d;
+            transform: scale(1.1);
+        }
+
+        .voice-btn.recording {
+            background: #e74c3c;
+            animation: pulse-record 1s infinite;
+        }
+
+        @keyframes pulse-record {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .message-image {
+            max-width: 300px;
+            border-radius: 10px;
+            margin-top: 10px;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .message-image:hover {
+            transform: scale(1.05);
+        }
+
+        .image-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .image-modal.show {
+            display: flex;
+        }
+
+        .image-modal img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 10px;
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            color: black;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .voice-note {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .voice-note audio {
+            width: 100%;
         }
 
         input[type="text"], input[type="password"], textarea {
@@ -1003,10 +1115,21 @@
             </div>
             <div class="input-area">
                 <div class="input-container">
-                    <input type="text" id="userInput" placeholder="Posez votre question à AIAI..." />
+                    <button class="file-upload-btn" onclick="document.getElementById('imageUpload').click()" title="Envoyer une image">📎</button>
+                    <button class="voice-btn" id="voiceBtn" onclick="toggleVoiceRecording()" title="Message vocal">🎤</button>
+                    <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+                    <div class="input-wrapper">
+                        <img id="imagePreview" class="image-preview">
+                        <input type="text" id="userInput" placeholder="Posez votre question à AIAI..." />
+                    </div>
                     <button onclick="sendMessage()" id="sendBtn">Envoyer</button>
                 </div>
             </div>
+        </div>
+
+        <div class="image-modal" id="imageModal" onclick="closeImageModal()">
+            <button class="close-modal" onclick="closeImageModal()">×</button>
+            <img id="modalImage" src="">
         </div>
 
         <div class="admin-section hidden" id="adminSection">
@@ -1082,6 +1205,9 @@
         let bannedUsers = {};
         let userFavorites = [];
         let userProfile = {};
+        let currentImageData = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
 
         window.addEventListener('DOMContentLoaded', () => {
             if (!userPseudo) {
@@ -1161,7 +1287,130 @@
             // Afficher dans la sidebar si nécessaire
         }
 
-        window.toggleFavorite = async function(messageId, messageText, messageTime) {
+        window.handleImageUpload = function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                currentImageData = e.target.result;
+                const preview = document.getElementById('imagePreview');
+                preview.src = currentImageData;
+                preview.classList.add('show');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        window.toggleVoiceRecording = async function() {
+            const voiceBtn = document.getElementById('voiceBtn');
+            
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = (event) => {
+                        audioChunks.push(event.data);
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.onload = async function(e) {
+                            const audioData = e.target.result;
+                            await sendVoiceMessage(audioData);
+                        };
+                        reader.readAsDataURL(audioBlob);
+                        
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorder.start();
+                    voiceBtn.classList.add('recording');
+                    voiceBtn.textContent = '⏹️';
+                } catch (error) {
+                    alert('Impossible d\'accéder au microphone');
+                }
+            } else {
+                mediaRecorder.stop();
+                voiceBtn.classList.remove('recording');
+                voiceBtn.textContent = '🎤';
+            }
+        }
+
+        async function sendVoiceMessage(audioData) {
+            if (!currentConversationId) {
+                await createNewConversation();
+                setTimeout(() => sendVoiceMessage(audioData), 500);
+                return;
+            }
+
+            const bannedSnapshot = await get(ref(database, 'admin/bannedUsers/' + userId));
+            if (bannedSnapshot.exists()) {
+                alert('❌ Vous avez été banni de ce service.');
+                return;
+            }
+
+            const pendingSnapshot = await get(allPendingRef);
+            let hasUnansweredMessage = false;
+            
+            if (pendingSnapshot.exists()) {
+                pendingSnapshot.forEach((childSnapshot) => {
+                    const pending = childSnapshot.val();
+                    if (pending.userId === userId && pending.conversationId === currentConversationId) {
+                        hasUnansweredMessage = true;
+                    }
+                });
+            }
+
+            if (hasUnansweredMessage) {
+                alert('⏳ Veuillez attendre la réponse à votre message précédent.');
+                return;
+            }
+
+            const now = Date.now();
+            const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+            const messagesRef = ref(database, 'users/' + userId + '/conversations/' + currentConversationId + '/messages');
+            await push(messagesRef, {
+                type: 'user',
+                text: '[Message vocal]',
+                audioData: audioData,
+                time: time,
+                timestamp: now
+            });
+
+            const convRef = ref(database, 'users/' + userId + '/conversations/' + currentConversationId);
+            await update(convRef, {
+                lastMessageTime: now,
+                preview: '🎤 Message vocal'
+            });
+
+            await push(allPendingRef, {
+                text: '[Message vocal - Transcription automatique non disponible]',
+                time: time,
+                timestamp: now,
+                userId: userId,
+                conversationId: currentConversationId,
+                hasAudio: true
+            });
+
+            const hiddenUserRef = ref(database, 'admin/hiddenUsers/' + userId);
+            const hiddenSnap = await get(hiddenUserRef);
+            if (hiddenSnap.exists()) {
+                await remove(hiddenUserRef);
+            }
+        }
+
+        window.openImageModal = function(src) {
+            document.getElementById('modalImage').src = src;
+            document.getElementById('imageModal').classList.add('show');
+        }
+
+        window.closeImageModal = function() {
+            document.getElementById('imageModal').classList.remove('show');
+        }
             const isFavorited = userFavorites.some(fav => fav.messageId === messageId);
             
             if (isFavorited) {
@@ -1352,17 +1601,29 @@
             }
             
             chatDiv.innerHTML = messages.map((msg, idx) => {
-                // Afficher typing indicator
                 if (msg.type === 'typing') {
                     return '<div class="message message-ai"><div class="typing-indicator"><span></span><span></span><span></span></div></div>';
                 }
                 
                 const messageId = `msg_${msg.timestamp}_${idx}`;
                 const isFavorited = userFavorites.some(fav => fav.text === msg.text && fav.time === msg.time);
+                
+                let content = msg.type === 'ai' ? formatMarkdown(msg.text) : escapeHtml(msg.text);
+                
+                // Ajouter l'image si présente
+                if (msg.imageData) {
+                    content += `<img src="${msg.imageData}" class="message-image" onclick="openImageModal('${msg.imageData}')" alt="Image">`;
+                }
+                
+                // Ajouter l'audio si présent
+                if (msg.audioData) {
+                    content += `<div class="voice-note"><audio controls src="${msg.audioData}"></audio></div>`;
+                }
+                
                 return `
                 <div class="message message-${msg.type}">
                     <div class="message-bubble">
-                        ${msg.type === 'ai' ? formatMarkdown(msg.text) : escapeHtml(msg.text)}
+                        ${content}
                         <div class="message-time">${msg.time}</div>
                     </div>
                     ${msg.type === 'ai' ? `<button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${messageId}', \`${msg.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`, '${msg.time}')">${isFavorited ? '⭐' : '☆'}</button>` : ''}
@@ -1679,8 +1940,24 @@
             }
         }
 
+        window.toggleFavorite = async function(messageId, messageText, messageTime) {
+            const isFavorited = userFavorites.some(fav => fav.messageId === messageId);
+            
+            if (isFavorited) {
+                const favToRemove = userFavorites.find(fav => fav.messageId === messageId);
+                await remove(ref(database, 'users/' + userId + '/favorites/' + favToRemove.id));
+            } else {
+                await push(favoritesRef, {
+                    messageId: messageId,
+                    text: messageText,
+                    time: messageTime,
+                    conversationId: currentConversationId,
+                    timestamp: Date.now()
+                });
+            }
+        }
+
         window.sendMessage = async function() {
-            // Vérifier si l'utilisateur est banni
             const bannedSnapshot = await get(ref(database, 'admin/bannedUsers/' + userId));
             if (bannedSnapshot.exists()) {
                 alert('❌ Vous avez été banni de ce service.');
@@ -1697,9 +1974,8 @@
             const sendBtn = document.getElementById('sendBtn');
             const text = input.value.trim();
             
-            if (!text) return;
+            if (!text && !currentImageData) return;
 
-            // Vérifier s'il y a déjà un message en attente de réponse
             const pendingSnapshot = await get(allPendingRef);
             let hasUnansweredMessage = false;
             
@@ -1718,18 +1994,25 @@
             }
 
             sendBtn.disabled = true;
+            const messageText = text || '[Image envoyée]';
             input.value = '';
 
             const now = Date.now();
             const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-            const messagesRef = ref(database, 'users/' + userId + '/conversations/' + currentConversationId + '/messages');
-            await push(messagesRef, {
+            const messageData = {
                 type: 'user',
-                text: text,
+                text: messageText,
                 time: time,
                 timestamp: now
-            });
+            };
+
+            if (currentImageData) {
+                messageData.imageData = currentImageData;
+            }
+
+            const messagesRef = ref(database, 'users/' + userId + '/conversations/' + currentConversationId + '/messages');
+            await push(messagesRef, messageData);
 
             const convRef = ref(database, 'users/' + userId + '/conversations/' + currentConversationId);
             const convSnapshot = await get(convRef);
@@ -1737,29 +2020,34 @@
             
             let title = convData.title;
             if (title === 'Nouvelle conversation') {
-                title = await generateTitle(text);
+                title = await generateTitle(text || 'Image');
             }
 
             await update(convRef, {
                 lastMessageTime: now,
-                preview: text.substring(0, 50),
+                preview: currentImageData ? '📷 Image' : text.substring(0, 50),
                 title: title
             });
 
             await push(allPendingRef, {
-                text: text,
+                text: currentImageData ? `[Image] ${text}` : text,
                 time: time,
                 timestamp: now,
                 userId: userId,
-                conversationId: currentConversationId
+                conversationId: currentConversationId,
+                hasImage: !!currentImageData
             });
 
-            // Si l'utilisateur était masqué, le rendre visible à nouveau
             const hiddenUserRef = ref(database, 'admin/hiddenUsers/' + userId);
             const hiddenSnap = await get(hiddenUserRef);
             if (hiddenSnap.exists()) {
                 await remove(hiddenUserRef);
             }
+
+            // Reset image
+            currentImageData = null;
+            document.getElementById('imagePreview').classList.remove('show');
+            document.getElementById('imageUpload').value = '';
 
             sendBtn.disabled = false;
             input.focus();
