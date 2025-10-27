@@ -1074,28 +1074,28 @@
             <h2>👋 Bienvenue !</h2>
             <p>Choisissez un pseudo pour commencer</p>
             <input type="text" id="pseudoInput" placeholder="Votre pseudo" maxlength="20" />
-            <button onclick="savePseudo()">Continuer</button>
+            <button onclick="window.savePseudo()">Continuer</button>
         </div>
     </div>
 
-    <div id="loginOverlay" class="login-overlay" style="display: none;" onclick="closeLoginIfClickOutside(event)">
+    <div id="loginOverlay" class="login-overlay" style="display: none;" onclick="window.closeLoginIfClickOutside(event)">
         <div class="login-box" onclick="event.stopPropagation()">
-            <button class="close-login-btn" onclick="closeLoginOverlay()">×</button>
+            <button class="close-login-btn" onclick="window.closeLoginOverlay()">×</button>
             <h2>🔒 Accès</h2>
             <input type="password" id="adminPassword" placeholder="Mot de passe" />
-            <button onclick="checkAdminPassword()">Connexion</button>
+            <button onclick="window.checkAdminPassword()">Connexion</button>
         </div>
     </div>
 
-    <button class="menu-toggle" onclick="toggleSidebar()" style="display: none;">☰</button>
-    <button class="admin-toggle" onclick="toggleAdminPanel()">⚙️ Partager</button>
-    <div class="overlay" id="overlay" onclick="closeAll()"></div>
+    <button class="menu-toggle" onclick="window.toggleSidebar()" style="display: none;">☰</button>
+    <button class="admin-toggle" onclick="window.toggleAdminPanel()">⚙️ Partager</button>
+    <div class="overlay" id="overlay" onclick="window.closeAll()"></div>
 
     <div class="container">
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <h2>💬 Mes Conversations</h2>
-                <button class="new-chat-btn" onclick="createNewConversation()">➕ Nouvelle conversation</button>
+                <button class="new-chat-btn" onclick="window.createNewConversation()">➕ Nouvelle conversation</button>
             </div>
             <div class="conversations-list" id="conversationsList">
                 <div class="empty-state" style="color: #95a5a6;">Aucune conversation</div>
@@ -1115,31 +1115,31 @@
             </div>
             <div class="input-area">
                 <div class="input-container">
-                    <button class="file-upload-btn" onclick="document.getElementById('imageUpload').click()" title="Envoyer une image">📎</button>
-                    <button class="voice-btn" id="voiceBtn" onclick="toggleVoiceRecording()" title="Message vocal">🎤</button>
-                    <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+                    <button class="file-upload-btn" onclick="window.handleImageClick()" title="Envoyer une image">📎</button>
+                    <button class="voice-btn" id="voiceBtn" onclick="window.toggleVoiceRecording()" title="Message vocal">🎤</button>
+                    <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="window.handleImageUpload(event)">
                     <div class="input-wrapper">
                         <img id="imagePreview" class="image-preview">
                         <input type="text" id="userInput" placeholder="Posez votre question à AIAI..." />
                     </div>
-                    <button onclick="sendMessage()" id="sendBtn">Envoyer</button>
+                    <button onclick="window.sendMessage()" id="sendBtn">Envoyer</button>
                 </div>
             </div>
         </div>
 
-        <div class="image-modal" id="imageModal" onclick="closeImageModal()">
-            <button class="close-modal" onclick="closeImageModal()">×</button>
+        <div class="image-modal" id="imageModal" onclick="window.closeImageModal()">
+            <button class="close-modal" onclick="window.closeImageModal()">×</button>
             <img id="modalImage" src="">
         </div>
 
         <div class="admin-section hidden" id="adminSection">
-            <button class="admin-close-btn" onclick="closeAdminPanel()">×</button>
+            <button class="admin-close-btn" onclick="window.closeAdminPanel()">×</button>
             <div class="admin-header">
                 <h2>📋 Panneau Admin</h2>
             </div>
             <div class="admin-tabs">
-                <button class="admin-tab active" onclick="switchAdminTab('pending')">Questions en attente</button>
-                <button class="admin-tab" onclick="switchAdminTab('users')">Utilisateurs</button>
+                <button class="admin-tab active" onclick="window.switchAdminTab('pending')">Questions en attente</button>
+                <button class="admin-tab" onclick="window.switchAdminTab('users')">Utilisateurs</button>
             </div>
             <div class="admin-content">
                 <div class="pending-questions active" id="pendingTab">
@@ -1285,6 +1285,10 @@
 
         function displayFavorites() {
             // Afficher dans la sidebar si nécessaire
+        }
+
+        window.handleImageClick = function() {
+            document.getElementById('imageUpload').click();
         }
 
         window.handleImageUpload = function(event) {
@@ -1491,11 +1495,11 @@
             }
 
             listDiv.innerHTML = userConversations.map(conv => `
-                <div class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}" onclick="loadConversation('${conv.id}')">
+                <div class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}" onclick="window.loadConversation('${conv.id}')">
                     <div class="conversation-title">${conv.title || 'Nouvelle conversation'}</div>
                     <div class="conversation-preview">${conv.preview || ''}</div>
                     <div class="conversation-time">${conv.lastMessageTime ? new Date(conv.lastMessageTime).toLocaleString('fr-FR', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'}) : ''}</div>
-                    <button class="delete-conv-btn" onclick="event.stopPropagation(); deleteConversation('${conv.id}')">×</button>
+                    <button class="delete-conv-btn" onclick="event.stopPropagation(); window.deleteConversation('${conv.id}')">×</button>
                 </div>
             `).join('');
         }
@@ -1612,7 +1616,7 @@
                 
                 // Ajouter l'image si présente
                 if (msg.imageData) {
-                    content += `<img src="${msg.imageData}" class="message-image" onclick="openImageModal('${msg.imageData}')" alt="Image">`;
+                    content += `<img src="${msg.imageData}" class="message-image" onclick="window.openImageModal('${msg.imageData}')" alt="Image">`;
                 }
                 
                 // Ajouter l'audio si présent
@@ -1626,7 +1630,7 @@
                         ${content}
                         <div class="message-time">${msg.time}</div>
                     </div>
-                    ${msg.type === 'ai' ? `<button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${messageId}', \`${msg.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`, '${msg.time}')">${isFavorited ? '⭐' : '☆'}</button>` : ''}
+                    ${msg.type === 'ai' ? `<button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="window.toggleFavorite('${messageId}', \`${msg.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`, '${msg.time}')">${isFavorited ? '⭐' : '☆'}</button>` : ''}
                 </div>
             `}).join('');
             chatDiv.scrollTop = chatDiv.scrollHeight;
@@ -1797,7 +1801,7 @@
                 });
 
                 return `
-                    <div class="user-item" onclick="showUserDetail('${user.id}')">
+                    <div class="user-item" onclick="window.showUserDetail('${user.id}')">
                         <div class="user-name">👤 ${user.pseudo}</div>
                         <div class="user-stats">💬 ${convCount} conversation(s) • 📝 ${totalMessages} message(s)</div>
                     </div>
