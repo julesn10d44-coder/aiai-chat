@@ -207,18 +207,139 @@
 
         .message {
             margin-bottom: 15px;
-            animation: slideIn 0.3s ease;
+            animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         @keyframes slideIn {
             from {
                 opacity: 0;
-                transform: translateY(10px);
+                transform: translateY(15px) scale(0.95);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateY(0) scale(1);
             }
+        }
+
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 18px;
+            max-width: 70px;
+            margin-bottom: 15px;
+        }
+
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 2px;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+
+        .favorite-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: transparent;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s;
+            padding: 5px;
+        }
+
+        .message:hover .favorite-btn {
+            opacity: 0.6;
+        }
+
+        .favorite-btn:hover {
+            opacity: 1 !important;
+            transform: scale(1.2);
+        }
+
+        .favorite-btn.favorited {
+            opacity: 1 !important;
+        }
+
+        .message {
+            position: relative;
+        }
+
+        .ban-user-btn {
+            padding: 8px 16px;
+            background: #dc3545;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .ban-user-btn:hover {
+            background: #c82333;
+        }
+
+        .banned-badge {
+            display: inline-block;
+            background: #dc3545;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+
+        .favorites-section {
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .favorites-title {
+            font-weight: bold;
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .favorite-item {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            position: relative;
+        }
+
+        .remove-favorite {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 12px;
         }
 
         .message-user {
@@ -954,7 +1075,11 @@
         const allPendingRef = ref(database, 'pending');
         const allUsersRef = ref(database, 'users');
         const hiddenUsersRef = ref(database, 'admin/hiddenUsers');
+        const bannedUsersRef = ref(database, 'admin/bannedUsers');
+        const favoritesRef = ref(database, 'users/' + userId + '/favorites');
         let hiddenUsers = {};
+        let bannedUsers = {};
+        let userFavorites = [];
 
         window.addEventListener('DOMContentLoaded', () => {
             if (!userPseudo) {
@@ -989,8 +1114,45 @@
         function initApp() {
             loadUserConversations();
             initAdmin();
+            loadFavorites();
             checkMobileView();
             createNewConversation();
+        }
+
+        function loadFavorites() {
+            onValue(favoritesRef, (snapshot) => {
+                userFavorites = [];
+                if (snapshot.exists()) {
+                    snapshot.forEach((childSnapshot) => {
+                        userFavorites.push({
+                            id: childSnapshot.key,
+                            ...childSnapshot.val()
+                        });
+                    });
+                }
+                displayFavorites();
+            });
+        }
+
+        function displayFavorites() {
+            // Afficher dans la sidebar si nécessaire
+        }
+
+        window.toggleFavorite = async function(messageId, messageText, messageTime) {
+            const isFavorited = userFavorites.some(fav => fav.messageId === messageId);
+            
+            if (isFavorited) {
+                const favToRemove = userFavorites.find(fav => fav.messageId === messageId);
+                await remove(ref(database, 'users/' + userId + '/favorites/' + favToRemove.id));
+            } else {
+                await push(favoritesRef, {
+                    messageId: messageId,
+                    text: messageText,
+                    time: messageTime,
+                    conversationId: currentConversationId,
+                    timestamp: Date.now()
+                });
+            }
         }
 
         window.addEventListener('resize', checkMobileView);
@@ -1165,14 +1327,18 @@
                 chatDiv.innerHTML = '<div class="empty-chat"><h2>💬</h2><p>Commencez la conversation</p></div>';
                 return;
             }
-            chatDiv.innerHTML = messages.map(msg => `
+            chatDiv.innerHTML = messages.map((msg, idx) => {
+                const messageId = `msg_${msg.timestamp}_${idx}`;
+                const isFavorited = userFavorites.some(fav => fav.text === msg.text && fav.time === msg.time);
+                return `
                 <div class="message message-${msg.type}">
                     <div class="message-bubble">
                         ${msg.type === 'ai' ? formatMarkdown(msg.text) : escapeHtml(msg.text)}
                         <div class="message-time">${msg.time}</div>
                     </div>
+                    ${msg.type === 'ai' ? `<button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${messageId}', \`${msg.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`, '${msg.time}')">${isFavorited ? '⭐' : '☆'}</button>` : ''}
                 </div>
-            `).join('');
+            `}).join('');
             chatDiv.scrollTop = chatDiv.scrollHeight;
         }
 
@@ -1248,6 +1414,18 @@
                 }
             });
 
+            onValue(bannedUsersRef, (snapshot) => {
+                bannedUsers = {};
+                if (snapshot.exists()) {
+                    snapshot.forEach((childSnapshot) => {
+                        bannedUsers[childSnapshot.key] = childSnapshot.val();
+                    });
+                }
+                if (currentAdminTab === 'users') {
+                    window.displayUsersList();
+                }
+            });
+
             onValue(allUsersRef, (snapshot) => {
                 allUsers = {};
                 
@@ -1259,7 +1437,8 @@
                         allUsers[uid] = {
                             id: uid,
                             pseudo: userData.profile.pseudo || 'Anonyme',
-                            conversations: userData.conversations || {}
+                            conversations: userData.conversations || {},
+                            isBanned: bannedUsers[uid] !== undefined
                         };
                     }
                 });
@@ -1366,9 +1545,13 @@
             let html = `
                 <button class="back-btn" onclick="window.displayUsersList()">← Retour</button>
                 <div class="user-messages">
-                    <div class="user-name">👤 ${user.pseudo}</div>
+                    <div class="user-name">👤 ${user.pseudo} ${user.isBanned ? '<span class="banned-badge">BANNI</span>' : ''}</div>
                     <div class="user-stats">Total: ${conversationsArray.length} conversation(s)</div>
                     <button class="delete-user-btn" onclick="window.hideUserFromAdmin('${uid}', '${user.pseudo}')">👁️‍🗨️ Masquer cet utilisateur</button>
+                    ${user.isBanned 
+                        ? `<button class="delete-user-btn" style="background: #28a745;" onclick="window.unbanUser('${uid}', '${user.pseudo}')">✅ Débannir</button>`
+                        : `<button class="ban-user-btn" onclick="window.banUser('${uid}', '${user.pseudo}')">🚫 Bannir définitivement</button>`
+                    }
                     <hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">
             `;
 
@@ -1402,6 +1585,30 @@
 
             html += '</div>';
             userDetailDiv.innerHTML = html;
+        }
+
+        window.banUser = async function(uid, pseudo) {
+            if (!confirm(`⚠️ BANNIR ${pseudo} définitivement ?\n\nIl ne pourra plus envoyer de messages !`)) return;
+
+            const banUserRef = ref(database, 'admin/bannedUsers/' + uid);
+            await set(banUserRef, {
+                pseudo: pseudo,
+                bannedAt: Date.now(),
+                reason: 'Banni par admin'
+            });
+
+            alert(`${pseudo} a été banni`);
+            window.showUserDetail(uid);
+        }
+
+        window.unbanUser = async function(uid, pseudo) {
+            if (!confirm(`Débannir ${pseudo} ?`)) return;
+
+            const banUserRef = ref(database, 'admin/bannedUsers/' + uid);
+            await remove(banUserRef);
+
+            alert(`${pseudo} a été débanni`);
+            window.showUserDetail(uid);
         }
 
         window.hideUserFromAdmin = async function(uid, pseudo) {
@@ -1444,6 +1651,13 @@
         }
 
         window.sendMessage = async function() {
+            // Vérifier si l'utilisateur est banni
+            const bannedSnapshot = await get(ref(database, 'admin/bannedUsers/' + userId));
+            if (bannedSnapshot.exists()) {
+                alert('❌ Vous avez été banni de ce service.');
+                return;
+            }
+
             if (!currentConversationId) {
                 await createNewConversation();
                 setTimeout(() => sendMessage(), 500);
@@ -1475,6 +1689,10 @@
             }
 
             sendBtn.disabled = true;
+            
+            // Afficher l'indicateur "typing..."
+            showTypingIndicator();
+
             const now = Date.now();
             const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
@@ -1519,6 +1737,24 @@
             input.value = '';
             sendBtn.disabled = false;
             input.focus();
+            hideTypingIndicator();
+        }
+
+        function showTypingIndicator() {
+            const chatDiv = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'typing-indicator';
+            typingDiv.id = 'typing-indicator';
+            typingDiv.innerHTML = '<span></span><span></span><span></span>';
+            chatDiv.appendChild(typingDiv);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingDiv = document.getElementById('typing-indicator');
+            if (typingDiv) {
+                typingDiv.remove();
+            }
         }
 
         window.respondManually = async function(questionId, targetUserId, conversationId) {
