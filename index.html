@@ -1077,9 +1077,11 @@
         const hiddenUsersRef = ref(database, 'admin/hiddenUsers');
         const bannedUsersRef = ref(database, 'admin/bannedUsers');
         const favoritesRef = ref(database, 'users/' + userId + '/favorites');
+        const userProfileRef = ref(database, 'users/' + userId + '/profile');
         let hiddenUsers = {};
         let bannedUsers = {};
         let userFavorites = [];
+        let userProfile = {};
 
         window.addEventListener('DOMContentLoaded', () => {
             if (!userPseudo) {
@@ -1115,8 +1117,29 @@
             loadUserConversations();
             initAdmin();
             loadFavorites();
+            loadUserProfile();
             checkMobileView();
             createNewConversation();
+        }
+
+        function loadUserProfile() {
+            onValue(userProfileRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    userProfile = snapshot.val();
+                } else {
+                    userProfile = {
+                        pseudo: userPseudo,
+                        preferences: {},
+                        memory: {}
+                    };
+                }
+            });
+        }
+
+        async function updateUserMemory(key, value) {
+            if (!userProfile.memory) userProfile.memory = {};
+            userProfile.memory[key] = value;
+            await update(userProfileRef, { memory: userProfile.memory });
         }
 
         function loadFavorites() {
@@ -1327,6 +1350,28 @@
                 chatDiv.innerHTML = '<div class="empty-chat"><h2>💬</h2><p>Commencez la conversation</p></div>';
                 return;
             }
+            
+            // Afficher indicateur typing si message en attente
+            let hasTyping = false;
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg && lastMsg.type === 'user') {
+                // Vérifier si ce message a une réponse en attente
+                get(allPendingRef).then(snapshot => {
+                    if (snapshot.exists()) {
+                        snapshot.forEach((childSnapshot) => {
+                            const pending = childSnapshot.val();
+                            if (pending.userId === userId && pending.conversationId === currentConversationId) {
+                                if (!document.getElementById('typing-indicator')) {
+                                    const typingHtml = '<div class="message message-ai"><div class="typing-indicator" id="typing-indicator"><span></span><span></span><span></span></div></div>';
+                                    chatDiv.innerHTML += typingHtml;
+                                    chatDiv.scrollTop = chatDiv.scrollHeight;
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+            
             chatDiv.innerHTML = messages.map((msg, idx) => {
                 const messageId = `msg_${msg.timestamp}_${idx}`;
                 const isFavorited = userFavorites.some(fav => fav.text === msg.text && fav.time === msg.time);
@@ -1689,9 +1734,7 @@
             }
 
             sendBtn.disabled = true;
-            
-            // Afficher l'indicateur "typing..."
-            showTypingIndicator();
+            input.value = '';
 
             const now = Date.now();
             const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -1734,27 +1777,8 @@
                 await remove(hiddenUserRef);
             }
 
-            input.value = '';
             sendBtn.disabled = false;
             input.focus();
-            hideTypingIndicator();
-        }
-
-        function showTypingIndicator() {
-            const chatDiv = document.getElementById('chatMessages');
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'typing-indicator';
-            typingDiv.id = 'typing-indicator';
-            typingDiv.innerHTML = '<span></span><span></span><span></span>';
-            chatDiv.appendChild(typingDiv);
-            chatDiv.scrollTop = chatDiv.scrollHeight;
-        }
-
-        function hideTypingIndicator() {
-            const typingDiv = document.getElementById('typing-indicator');
-            if (typingDiv) {
-                typingDiv.remove();
-            }
         }
 
         window.respondManually = async function(questionId, targetUserId, conversationId) {
@@ -1782,38 +1806,49 @@
 
         async function callGroqAI(question, conversationHistory = []) {
             try {
-                // Construire le contexte avec TOUS les messages de la conversation
+                // Détecter la langue de la question
+                const detectedLang = detectLanguage(question);
+                
+                // Récupérer la mémoire utilisateur
+                const memoryContext = userProfile.memory ? Object.entries(userProfile.memory)
+                    .map(([key, val]) => `${key}: ${val}`)
+                    .join(', ') : '';
+
+                // Vérifier si c'est un jeu
+                const gameResponse = handleGameCommand(question);
+                if (gameResponse) return gameResponse;
+
+                const languageInstruction = detectedLang === 'en' 
+                    ? 'You are AIAI, an intelligent, friendly and helpful assistant. Respond in English naturally and conversationally.'
+                    : detectedLang === 'es'
+                    ? 'Eres AIAI, un asistente inteligente, amigable y útil. Responde en español de manera natural y conversacional.'
+                    : 'Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle et conversationnelle.';
+
                 const messages = [
                     {
                         role: "system",
-                        content: `Tu es AIAI, un assistant intelligent, amical et serviable. Tu réponds en français de manière naturelle et conversationnelle. 
+                        content: `${languageInstruction}
 
-FORMATAGE IMPORTANT :
-- Utilise **du gras** pour mettre en évidence les mots-clés importants
-- Structure tes réponses avec des listes à puces (- ou *) quand c'est pertinent
-- Utilise des listes numérotées (1. 2. 3.) pour les étapes ou instructions
-- Ajoute des emojis pertinents pour rendre le message plus vivant (🚗 🏠 📍 ⏰ etc.)
-- Sépare les sections avec des titres ## quand c'est utile
-- Rends tes réponses claires, aérées et faciles à lire
+${memoryContext ? `MÉMOIRE UTILISATEUR : ${memoryContext}. Fais référence à ces informations si pertinent.` : ''}
 
-Exemple de bon formatage :
-"Pour vous rendre au 220 rue Anatole France 🏠 :
+DÉTECTION DE PRÉFÉRENCES : Si l'utilisateur mentionne :
+- Son plat préféré → mémorise-le
+- Sa couleur préférée → mémorise-le  
+- Son âge, ville, métier → mémorise-le
+Enregistre ces infos naturellement dans la conversation.
 
-**En voiture** 🚗
-- Depuis le centre-ville, prenez la direction de la gare
-- Tournez à gauche sur la rue Anatole France
-- Le numéro 220 se trouve à environ 500m sur votre droite
+FORMATAGE :
+- Utilise **du gras** pour les mots-clés
+- Structure avec des listes (- ou *) si pertinent
+- Ajoute des emojis contextuels
+- Titres ## pour sections
+- Reste naturel et adapté à la langue détectée
 
-**En transports** 🚌
-- Lignes de bus : 3 et 12
-- Arrêts proches : Gare de Brest ou Anatole France
-- Temps de marche depuis la gare : 10 minutes environ
-
-**Parking** 🅿️
-- Parking de la gare (payant)
-- Places en voirie disponibles (vérifier les zones)"
-
-Adapte le formatage selon le type de question. N'en fais pas trop, reste naturel !`
+JEUX : Si l'utilisateur demande un jeu, propose :
+- Devinettes (animals, objets)
+- Quiz culture générale
+- Pierre-feuille-ciseaux
+- Blind test`
                     },
                     ...conversationHistory
                 ];
@@ -1839,13 +1874,114 @@ Adapte le formatage selon le type de question. N'en fais pas trop, reste naturel
                 const data = await response.json();
                 
                 if (data.choices && data.choices[0] && data.choices[0].message) {
-                    return data.choices[0].message.content;
+                    const aiResponse = data.choices[0].message.content;
+                    
+                    // Extraire et sauvegarder les préférences
+                    extractAndSavePreferences(question, aiResponse);
+                    
+                    return aiResponse;
                 }
                 throw new Error('Format invalide');
             } catch (error) {
                 console.error('Erreur IA:', error);
                 return "Désolé, problème technique. Réessayez.";
             }
+        }
+
+        function detectLanguage(text) {
+            const lowerText = text.toLowerCase();
+            
+            // Mots clés anglais
+            const englishWords = ['hello', 'how', 'what', 'where', 'when', 'why', 'the', 'is', 'are', 'you', 'your'];
+            const englishCount = englishWords.filter(word => lowerText.includes(word)).length;
+            
+            // Mots clés espagnols
+            const spanishWords = ['hola', 'como', 'que', 'donde', 'cuando', 'por', 'el', 'la', 'es', 'tu', 'gracias'];
+            const spanishCount = spanishWords.filter(word => lowerText.includes(word)).length;
+            
+            // Mots clés français
+            const frenchWords = ['bonjour', 'comment', 'quoi', 'où', 'quand', 'pourquoi', 'le', 'la', 'est', 'tu', 'merci'];
+            const frenchCount = frenchWords.filter(word => lowerText.includes(word)).length;
+            
+            if (englishCount > frenchCount && englishCount > spanishCount) return 'en';
+            if (spanishCount > frenchCount && spanishCount > englishCount) return 'es';
+            return 'fr'; // Par défaut français
+        }
+
+        function extractAndSavePreferences(question, response) {
+            const lowerQ = question.toLowerCase();
+            
+            // Détecter plat préféré
+            if (lowerQ.match(/(mon|j'aime|préfère|adore).*(plat|nourriture|manger)/)) {
+                const foods = ['pizza', 'burger', 'pâtes', 'sushi', 'tacos', 'steak'];
+                foods.forEach(food => {
+                    if (lowerQ.includes(food)) {
+                        updateUserMemory('platPrefere', food);
+                    }
+                });
+            }
+            
+            // Détecter couleur préférée
+            if (lowerQ.match(/(ma|j'aime|préfère).*(couleur)/)) {
+                const colors = ['rouge', 'bleu', 'vert', 'jaune', 'noir', 'blanc', 'rose'];
+                colors.forEach(color => {
+                    if (lowerQ.includes(color)) {
+                        updateUserMemory('couleurPreferee', color);
+                    }
+                });
+            }
+            
+            // Détecter ville
+            if (lowerQ.match(/(j'habite|je vis|ma ville|de).*(à|au|en)/)) {
+                const match = lowerQ.match(/(à|au|en)\s+(\w+)/);
+                if (match) {
+                    updateUserMemory('ville', match[2]);
+                }
+            }
+        }
+
+        function handleGameCommand(question) {
+            const lowerQ = question.toLowerCase();
+            
+            // Devinette
+            if (lowerQ.match(/(devinette|énigme|devine)/)) {
+                const riddles = [
+                    "🤔 Je commence la nuit et termine le matin. Qui suis-je ? (Réponse : La lettre N)",
+                    "🐘 Qu'est-ce qui a 4 pattes le matin, 2 à midi et 3 le soir ? (Réponse : L'homme)",
+                    "🌊 Plus j'ai de trous, plus je retiens l'eau. Qui suis-je ? (Réponse : L'éponge)"
+                ];
+                return riddles[Math.floor(Math.random() * riddles.length)];
+            }
+            
+            // Quiz
+            if (lowerQ.match(/(quiz|question|test)/)) {
+                const quizzes = [
+                    "🌍 **Quiz géographie** : Quelle est la capitale de l'Australie ?\na) Sydney\nb) Canberra\nc) Melbourne\n(Réponse : b)",
+                    "🎬 **Quiz ciné** : Quel film a remporté l'Oscar du meilleur film en 1994 ?\na) Forrest Gump\nb) Pulp Fiction\nc) La Liste de Schindler\n(Réponse : c)",
+                    "⚽ **Quiz sport** : Combien de ballons d'or a Messi ?\na) 6\nb) 7\nc) 8\n(Réponse : c)"
+                ];
+                return quizzes[Math.floor(Math.random() * quizzes.length)];
+            }
+            
+            // Pierre-feuille-ciseaux
+            if (lowerQ.match(/(pierre|feuille|ciseaux)/)) {
+                const choices = ['pierre', 'feuille', 'ciseaux'];
+                const aiChoice = choices[Math.floor(Math.random() * 3)];
+                const userChoice = lowerQ.includes('pierre') ? 'pierre' : lowerQ.includes('feuille') ? 'feuille' : 'ciseaux';
+                
+                let result = '';
+                if (userChoice === aiChoice) result = '🤝 Égalité !';
+                else if (
+                    (userChoice === 'pierre' && aiChoice === 'ciseaux') ||
+                    (userChoice === 'feuille' && aiChoice === 'pierre') ||
+                    (userChoice === 'ciseaux' && aiChoice === 'feuille')
+                ) result = '🎉 Tu gagnes !';
+                else result = '😄 Je gagne !';
+                
+                return `**Pierre-Feuille-Ciseaux**\n\nTu as choisi : ${userChoice}\nJ'ai choisi : ${aiChoice}\n\n${result}`;
+            }
+            
+            return null;
         }
 
         window.autoRespond = async function(questionId, targetUserId, conversationId, questionText) {
