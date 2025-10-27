@@ -1351,28 +1351,12 @@
                 return;
             }
             
-            // Afficher indicateur typing si message en attente
-            let hasTyping = false;
-            const lastMsg = messages[messages.length - 1];
-            if (lastMsg && lastMsg.type === 'user') {
-                // Vérifier si ce message a une réponse en attente
-                get(allPendingRef).then(snapshot => {
-                    if (snapshot.exists()) {
-                        snapshot.forEach((childSnapshot) => {
-                            const pending = childSnapshot.val();
-                            if (pending.userId === userId && pending.conversationId === currentConversationId) {
-                                if (!document.getElementById('typing-indicator')) {
-                                    const typingHtml = '<div class="message message-ai"><div class="typing-indicator" id="typing-indicator"><span></span><span></span><span></span></div></div>';
-                                    chatDiv.innerHTML += typingHtml;
-                                    chatDiv.scrollTop = chatDiv.scrollHeight;
-                                }
-                            }
-                        });
-                    }
-                });
-            }
-            
             chatDiv.innerHTML = messages.map((msg, idx) => {
+                // Afficher typing indicator
+                if (msg.type === 'typing') {
+                    return '<div class="message message-ai"><div class="typing-indicator"><span></span><span></span><span></span></div></div>';
+                }
+                
                 const messageId = `msg_${msg.timestamp}_${idx}`;
                 const isFavorited = userFavorites.some(fav => fav.text === msg.text && fav.time === msg.time);
                 return `
@@ -1790,10 +1774,29 @@
                 return;
             }
 
+            // Ajouter l'indicateur typing pour l'utilisateur
+            const userMessagesRef = ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages');
+            await push(userMessagesRef, {
+                type: 'typing',
+                timestamp: Date.now()
+            });
+
+            // Délai de 2 secondes pour réalisme
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Supprimer l'indicateur typing
+            const convMessagesRef = ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages');
+            const messagesSnap = await get(convMessagesRef);
+            messagesSnap.forEach((childSnapshot) => {
+                const msg = childSnapshot.val();
+                if (msg.type === 'typing') {
+                    remove(ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages/' + childSnapshot.key));
+                }
+            });
+
             const now = Date.now();
             const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-            const userMessagesRef = ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages');
             await push(userMessagesRef, {
                 type: 'ai',
                 text: responseText,
@@ -1992,6 +1995,15 @@ JEUX : Si l'utilisateur demande un jeu, propose :
                 autoBtn.disabled = true;
             }
 
+            // Ajouter l'indicateur typing pour l'utilisateur
+            const userMessagesRef = ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages');
+            const typingId = 'typing_' + Date.now();
+            await push(userMessagesRef, {
+                type: 'typing',
+                timestamp: Date.now(),
+                id: typingId
+            });
+
             // Récupérer TOUS les messages de la conversation pour le contexte
             const convMessagesRef = ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages');
             const messagesSnapshot = await get(convMessagesRef);
@@ -2000,11 +2012,13 @@ JEUX : Si l'utilisateur demande un jeu, propose :
             if (messagesSnapshot.exists()) {
                 const messages = [];
                 messagesSnapshot.forEach((childSnapshot) => {
-                    messages.push(childSnapshot.val());
+                    const msg = childSnapshot.val();
+                    if (msg.type !== 'typing') { // Ignorer les messages typing
+                        messages.push(msg);
+                    }
                 });
                 messages.sort((a, b) => a.timestamp - b.timestamp);
                 
-                // Convertir les messages en format pour l'IA
                 conversationHistory = messages.map(msg => ({
                     role: msg.type === 'user' ? 'user' : 'assistant',
                     content: msg.text
@@ -2013,10 +2027,21 @@ JEUX : Si l'utilisateur demande un jeu, propose :
 
             const aiResponse = await callGroqAI(questionText, conversationHistory);
             
+            // Délai de 2 secondes pour réalisme
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Supprimer l'indicateur typing
+            const messagesSnap = await get(convMessagesRef);
+            messagesSnap.forEach((childSnapshot) => {
+                const msg = childSnapshot.val();
+                if (msg.type === 'typing') {
+                    remove(ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages/' + childSnapshot.key));
+                }
+            });
+            
             const now = Date.now();
             const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-            const userMessagesRef = ref(database, 'users/' + targetUserId + '/conversations/' + conversationId + '/messages');
             await push(userMessagesRef, {
                 type: 'ai',
                 text: aiResponse,
